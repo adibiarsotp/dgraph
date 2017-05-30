@@ -45,7 +45,7 @@ popd &> /dev/null
 # Lets wait for stuff to be committed to RocksDB.
 sleep 20
 
-pushd $GOPATH/src/github.com/adibiarsotp/dgraph/contrib/indextest &> /dev/null
+pushd $GOPATH/src/gopkg.in/adibiarsotp/dgraph.vo/contrib/indextest &> /dev/null
 
 function run_index_test {
 	X=$1

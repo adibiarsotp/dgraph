@@ -23,11 +23,11 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/adibiarsotp/dgraph/group"
-	"github.com/adibiarsotp/dgraph/posting"
-	"github.com/adibiarsotp/dgraph/protos"
-	"github.com/adibiarsotp/dgraph/types"
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.vo/group"
+	"gopkg.in/adibiarsotp/dgraph.vo/posting"
+	"gopkg.in/adibiarsotp/dgraph.vo/protos"
+	"gopkg.in/adibiarsotp/dgraph.vo/types"
+	"gopkg.in/adibiarsotp/dgraph.vo/x"
 )
 
 var (

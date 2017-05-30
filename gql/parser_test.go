@@ -24,11 +24,11 @@ import (
 	"testing"
 
 	"github.com/dgraph-io/badger/badger"
-	"github.com/adibiarsotp/dgraph/group"
-	"github.com/adibiarsotp/dgraph/posting"
-	"github.com/adibiarsotp/dgraph/schema"
-	"github.com/adibiarsotp/dgraph/worker"
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.vo/group"
+	"gopkg.in/adibiarsotp/dgraph.vo/posting"
+	"gopkg.in/adibiarsotp/dgraph.vo/schema"
+	"gopkg.in/adibiarsotp/dgraph.vo/worker"
+	"gopkg.in/adibiarsotp/dgraph.vo/x"
 	"github.com/stretchr/testify/require"
 )
 

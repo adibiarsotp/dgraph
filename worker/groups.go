@@ -31,10 +31,10 @@ import (
 	"github.com/dgraph-io/badger/badger"
 	"golang.org/x/net/context"
 
-	"github.com/adibiarsotp/dgraph/protos"
-	"github.com/adibiarsotp/dgraph/raftwal"
-	"github.com/adibiarsotp/dgraph/schema"
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.vo/protos"
+	"gopkg.in/adibiarsotp/dgraph.vo/raftwal"
+	"gopkg.in/adibiarsotp/dgraph.vo/schema"
+	"gopkg.in/adibiarsotp/dgraph.vo/x"
 )
 
 var (

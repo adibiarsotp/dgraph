@@ -21,11 +21,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	"github.com/adibiarsotp/dgraph/client"
-	"github.com/adibiarsotp/dgraph/protos"
-	"github.com/adibiarsotp/dgraph/rdf"
-	"github.com/adibiarsotp/dgraph/schema"
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.vo/client"
+	"gopkg.in/adibiarsotp/dgraph.vo/protos"
+	"gopkg.in/adibiarsotp/dgraph.vo/rdf"
+	"gopkg.in/adibiarsotp/dgraph.vo/schema"
+	"gopkg.in/adibiarsotp/dgraph.vo/x"
 )
 
 var (

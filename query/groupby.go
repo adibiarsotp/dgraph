@@ -22,10 +22,10 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/adibiarsotp/dgraph/algo"
-	"github.com/adibiarsotp/dgraph/protos"
-	"github.com/adibiarsotp/dgraph/types"
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.vo/algo"
+	"gopkg.in/adibiarsotp/dgraph.vo/protos"
+	"gopkg.in/adibiarsotp/dgraph.vo/types"
+	"gopkg.in/adibiarsotp/dgraph.vo/x"
 )
 
 type groupPair struct {

@@ -10,10 +10,10 @@ import (
 	"log"
 	"os"
 
-	"github.com/adibiarsotp/dgraph/client"
-	"github.com/adibiarsotp/dgraph/protos"
-	"github.com/adibiarsotp/dgraph/rdf"
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.vo/client"
+	"gopkg.in/adibiarsotp/dgraph.vo/protos"
+	"gopkg.in/adibiarsotp/dgraph.vo/rdf"
+	"gopkg.in/adibiarsotp/dgraph.vo/x"
 	"github.com/gogo/protobuf/proto"
 	"google.golang.org/grpc"
 )

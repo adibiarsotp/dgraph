@@ -25,10 +25,10 @@ import (
 	"github.com/dgraph-io/badger/badger"
 	"github.com/stretchr/testify/require"
 
-	"github.com/adibiarsotp/dgraph/group"
-	"github.com/adibiarsotp/dgraph/protos"
-	"github.com/adibiarsotp/dgraph/types"
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.vo/group"
+	"gopkg.in/adibiarsotp/dgraph.vo/protos"
+	"gopkg.in/adibiarsotp/dgraph.vo/types"
+	"gopkg.in/adibiarsotp/dgraph.vo/x"
 )
 
 type nameType struct {

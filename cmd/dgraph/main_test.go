@@ -30,15 +30,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/dgraph-io/badger/badger"
-	"github.com/adibiarsotp/dgraph/gql"
-	"github.com/adibiarsotp/dgraph/group"
-	"github.com/adibiarsotp/dgraph/posting"
-	"github.com/adibiarsotp/dgraph/protos"
-	"github.com/adibiarsotp/dgraph/query"
-	"github.com/adibiarsotp/dgraph/schema"
-	"github.com/adibiarsotp/dgraph/types"
-	"github.com/adibiarsotp/dgraph/worker"
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.vo/gql"
+	"gopkg.in/adibiarsotp/dgraph.vo/group"
+	"gopkg.in/adibiarsotp/dgraph.vo/posting"
+	"gopkg.in/adibiarsotp/dgraph.vo/protos"
+	"gopkg.in/adibiarsotp/dgraph.vo/query"
+	"gopkg.in/adibiarsotp/dgraph.vo/schema"
+	"gopkg.in/adibiarsotp/dgraph.vo/types"
+	"gopkg.in/adibiarsotp/dgraph.vo/worker"
+	"gopkg.in/adibiarsotp/dgraph.vo/x"
 )
 
 var q0 = `

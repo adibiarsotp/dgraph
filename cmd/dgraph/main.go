@@ -49,17 +49,17 @@ import (
 	"golang.org/x/net/trace"
 	"google.golang.org/grpc"
 
-	"github.com/adibiarsotp/dgraph/gql"
-	"github.com/adibiarsotp/dgraph/group"
-	"github.com/adibiarsotp/dgraph/posting"
-	"github.com/adibiarsotp/dgraph/protos"
-	"github.com/adibiarsotp/dgraph/query"
-	"github.com/adibiarsotp/dgraph/rdf"
-	"github.com/adibiarsotp/dgraph/schema"
-	"github.com/adibiarsotp/dgraph/tok"
-	"github.com/adibiarsotp/dgraph/types"
-	"github.com/adibiarsotp/dgraph/worker"
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.vo/gql"
+	"gopkg.in/adibiarsotp/dgraph.vo/group"
+	"gopkg.in/adibiarsotp/dgraph.vo/posting"
+	"gopkg.in/adibiarsotp/dgraph.vo/protos"
+	"gopkg.in/adibiarsotp/dgraph.vo/query"
+	"gopkg.in/adibiarsotp/dgraph.vo/rdf"
+	"gopkg.in/adibiarsotp/dgraph.vo/schema"
+	"gopkg.in/adibiarsotp/dgraph.vo/tok"
+	"gopkg.in/adibiarsotp/dgraph.vo/types"
+	"gopkg.in/adibiarsotp/dgraph.vo/worker"
+	"gopkg.in/adibiarsotp/dgraph.vo/x"
 	"github.com/soheilhy/cmux"
 )
 
@@ -871,7 +871,7 @@ func init() {
 	// the user. In other cases, it should point to the build directory within the repository.
 	flag.StringVar(&uiDir, "ui", uiDir, "Directory which contains assets for the user interface")
 	if uiDir == "" {
-		uiDir = os.Getenv("GOPATH") + "/src/github.com/adibiarsotp/dgraph/dashboard/build"
+		uiDir = os.Getenv("GOPATH") + "/src/gopkg.in/adibiarsotp/dgraph.vo/dashboard/build"
 	}
 }
 

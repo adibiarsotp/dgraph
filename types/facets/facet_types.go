@@ -17,7 +17,7 @@
 
 package facets
 
-import "github.com/adibiarsotp/dgraph/protos"
+import "gopkg.in/adibiarsotp/dgraph.vo/protos"
 
 const (
 	IntID      = TypeID(protos.Facet_INT)

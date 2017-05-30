@@ -25,10 +25,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/adibiarsotp/dgraph/group"
-	"github.com/adibiarsotp/dgraph/protos"
-	"github.com/adibiarsotp/dgraph/schema"
-	"github.com/adibiarsotp/dgraph/types"
+	"gopkg.in/adibiarsotp/dgraph.vo/group"
+	"gopkg.in/adibiarsotp/dgraph.vo/protos"
+	"gopkg.in/adibiarsotp/dgraph.vo/schema"
+	"gopkg.in/adibiarsotp/dgraph.vo/types"
 )
 
 func TestConvertEdgeType(t *testing.T) {

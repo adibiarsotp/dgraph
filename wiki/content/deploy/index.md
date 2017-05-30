@@ -10,7 +10,7 @@ If you followed one of the [recommended installation]({{< relref "get-started/in
 
 ### Manual download (Optional)
 
-If you don't want to follow the automatic installation method, you could manually download the appropriate tar for your platform from **[Dgraph releases](https://github.com/adibiarsotp/dgraph/releases)**. After downloading the tar for your platform from Github, extract the binaries to `/usr/local/bin` like so.
+If you don't want to follow the automatic installation method, you could manually download the appropriate tar for your platform from **[Dgraph releases](https://gopkg.in/adibiarsotp/dgraph.vo/releases)**. After downloading the tar for your platform from Github, extract the binaries to `/usr/local/bin` like so.
 
 ```sh
 # For Linux
@@ -170,7 +170,7 @@ default: fp % 1 + 1
 
 # fp % 1 is always zero. Thus, all data is located on group id 1.
 ```
-{{% notice "warning" %}}Group id 0 is used to store membership information for the entire cluster. We don't take any snapshots of this group, so no data should be stored on group zero. [Related Github issue](https://github.com/adibiarsotp/dgraph/issues/427){{% /notice %}}
+{{% notice "warning" %}}Group id 0 is used to store membership information for the entire cluster. We don't take any snapshots of this group, so no data should be stored on group zero. [Related Github issue](https://gopkg.in/adibiarsotp/dgraph.vo/issues/427){{% /notice %}}
 
 Example of a valid groups.conf is:
 
@@ -222,7 +222,7 @@ The new servers will automatically detect each other by communicating with the p
 ## Bulk Data Loading
 {{% notice "tip" %}}This is an optional step, only relevant if you have a lot of data that you need to quickly import into Dgraph.{{% /notice %}}
 
-Dgraph loader binary is a small helper program which reads RDF NQuads from a gzipped file, batches them up, creates queries and shoots off to Dgraph. You don't need to use this program to load data, you can do the same thing by issuing batched queries via your own client. The code is [relatively straighforward](https://github.com/adibiarsotp/dgraph/blob/master/cmd/dgraphloader/main.go#L54-L87).
+Dgraph loader binary is a small helper program which reads RDF NQuads from a gzipped file, batches them up, creates queries and shoots off to Dgraph. You don't need to use this program to load data, you can do the same thing by issuing batched queries via your own client. The code is [relatively straighforward](https://gopkg.in/adibiarsotp/dgraph.vo/blob/master/cmd/dgraphloader/main.go#L54-L87).
 
 {{% notice "note" %}}Dgraph only accepts gzipped data in RDF NQuad/Triple format. If you have data in some other format, you'll have to convert it [to this](https://www.w3.org/TR/n-quads/).{{% /notice %}}
 
@@ -296,4 +296,4 @@ On EC2/GCE instances, the recommended minimum is 8GB. If you still continue to h
 
 ## See Also
 
-* [Product Roadmap to v1.0](https://github.com/adibiarsotp/dgraph/issues/1)
+* [Product Roadmap to v1.0](https://gopkg.in/adibiarsotp/dgraph.vo/issues/1)

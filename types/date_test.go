@@ -26,7 +26,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.vo/x"
 )
 
 func TestConvertDateToBool(t *testing.T) {

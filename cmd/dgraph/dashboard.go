@@ -21,7 +21,7 @@ import (
 	"net/http"
 	"regexp"
 
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.vo/x"
 )
 
 func homeHandler(h http.Handler, reg *regexp.Regexp) http.Handler {

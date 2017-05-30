@@ -11,12 +11,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.vo/x"
 )
 
 var home = os.Getenv("GOPATH")
 var fpath = flag.String("rest",
-	home+"/src/github.com/adibiarsotp/dgraph/food/rest.csv",
+	home+"/src/gopkg.in/adibiarsotp/dgraph.vo/food/rest.csv",
 	"File path of restaurants file")
 
 type Restaurant struct {

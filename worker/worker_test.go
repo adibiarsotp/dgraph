@@ -28,11 +28,11 @@ import (
 	"github.com/dgraph-io/badger/badger"
 	"github.com/stretchr/testify/require"
 
-	"github.com/adibiarsotp/dgraph/algo"
-	"github.com/adibiarsotp/dgraph/posting"
-	"github.com/adibiarsotp/dgraph/protos"
-	"github.com/adibiarsotp/dgraph/schema"
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.vo/algo"
+	"gopkg.in/adibiarsotp/dgraph.vo/posting"
+	"gopkg.in/adibiarsotp/dgraph.vo/protos"
+	"gopkg.in/adibiarsotp/dgraph.vo/schema"
+	"gopkg.in/adibiarsotp/dgraph.vo/x"
 )
 
 var raftIndex uint64

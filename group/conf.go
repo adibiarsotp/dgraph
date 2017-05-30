@@ -25,7 +25,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.vo/x"
 	farm "github.com/dgryski/go-farm"
 )
 

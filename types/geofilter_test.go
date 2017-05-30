@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.vo/x"
 	"github.com/stretchr/testify/require"
 	"github.com/twpayne/go-geom"
 	"github.com/twpayne/go-geom/encoding/wkb"

@@ -18,7 +18,7 @@
 package schema
 
 import (
-	"github.com/adibiarsotp/dgraph/lex"
+	"gopkg.in/adibiarsotp/dgraph.vo/lex"
 )
 
 // Constants representing type of different graphql lexed items.

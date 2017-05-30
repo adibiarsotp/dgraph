@@ -25,8 +25,8 @@ import (
 	"log"
 	"sync"
 
-	"github.com/adibiarsotp/dgraph/protos"
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.vo/protos"
+	"gopkg.in/adibiarsotp/dgraph.vo/x"
 
 	"google.golang.org/grpc"
 )

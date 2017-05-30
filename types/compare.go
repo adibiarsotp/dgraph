@@ -18,7 +18,7 @@
 package types
 
 import (
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.vo/x"
 )
 
 // Should be used only in filtering arg1 by comparing with arg2.

@@ -27,7 +27,7 @@ Another thing is, if your data doesn't have graph structure, i.e., there's only 
 We recommend Dgraph to be used in internal projects at companies. Minor releases at this stage might not be backward compatible; so we highly recommend using [frequent backups]({{< relref "deploy/index.md#backup" >}}).
 
 ### Is Dgraph fast?
-Every other graph system that I've run it against, Dgraph has been at least a 10x factor faster. It only goes up from there. But, that's my own observations. We have a couple of folks doing a thorough benchmarking of Dgraph against Cayley and Neo4J, which we'll publish blog posts for soon. See relevant Github [issues here](https://github.com/adibiarsotp/dgraph/issues?q=is%3Aissue+label%3Abenchmark).
+Every other graph system that I've run it against, Dgraph has been at least a 10x factor faster. It only goes up from there. But, that's my own observations. We have a couple of folks doing a thorough benchmarking of Dgraph against Cayley and Neo4J, which we'll publish blog posts for soon. See relevant Github [issues here](https://gopkg.in/adibiarsotp/dgraph.vo/issues?q=is%3Aissue+label%3Abenchmark).
 
 ## Internals
 
@@ -52,7 +52,7 @@ Dgraph will aim to support [Gremlin](https://github.com/tinkerpop/gremlin/wiki) 
 If there is a demand for it, Dgraph could support [Cypher](https://neo4j.com/developer/cypher-query-language/). It would most likely be after v1.0.
 
 ### Can Dgraph support X?
-Please see Dgraph [product roadmap](https://github.com/adibiarsotp/dgraph/issues/1) of what we're planning to support for v1.0. If `request X` is not part of it, please feel free to start a discussion at [discuss.dgraph.io](https://discuss.dgraph.io), or file a [Github Issue](https://github.com/adibiarsotp/dgraph/issues).
+Please see Dgraph [product roadmap](https://gopkg.in/adibiarsotp/dgraph.vo/issues/1) of what we're planning to support for v1.0. If `request X` is not part of it, please feel free to start a discussion at [discuss.dgraph.io](https://discuss.dgraph.io), or file a [Github Issue](https://gopkg.in/adibiarsotp/dgraph.vo/issues).
 
 ## Long Term Plans
 

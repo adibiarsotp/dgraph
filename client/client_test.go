@@ -19,7 +19,7 @@ package client
 import (
 	"testing"
 
-	"github.com/adibiarsotp/dgraph/protos"
+	"gopkg.in/adibiarsotp/dgraph.vo/protos"
 	"github.com/stretchr/testify/assert"
 )
 
