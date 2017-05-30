@@ -25,9 +25,9 @@ import (
 	"strconv"
 	"strings"
 
-	"gopkg.in/adibiarsotp/dgraph.vo/lex"
-	"gopkg.in/adibiarsotp/dgraph.vo/protos"
-	"gopkg.in/adibiarsotp/dgraph.vo/x"
+	"gopkg.in/adibiarsotp/dgraph.v0/lex"
+	"gopkg.in/adibiarsotp/dgraph.v0/protos"
+	"gopkg.in/adibiarsotp/dgraph.v0/x"
 )
 
 // GraphQuery stores the parsed Query in a tree format. This gets converted to

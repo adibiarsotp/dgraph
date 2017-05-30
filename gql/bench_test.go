@@ -20,7 +20,7 @@ package gql
 import (
 	"testing"
 
-	"gopkg.in/adibiarsotp/dgraph.vo/schema"
+	"gopkg.in/adibiarsotp/dgraph.v0/schema"
 	"github.com/stretchr/testify/require"
 )
 

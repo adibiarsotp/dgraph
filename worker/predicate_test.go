@@ -26,9 +26,9 @@ import (
 	"github.com/dgraph-io/badger/badger"
 	"google.golang.org/grpc"
 
-	"gopkg.in/adibiarsotp/dgraph.vo/posting"
-	"gopkg.in/adibiarsotp/dgraph.vo/protos"
-	"gopkg.in/adibiarsotp/dgraph.vo/x"
+	"gopkg.in/adibiarsotp/dgraph.v0/posting"
+	"gopkg.in/adibiarsotp/dgraph.v0/protos"
+	"gopkg.in/adibiarsotp/dgraph.v0/x"
 )
 
 func checkShard(ps *badger.KV) (int, []byte) {

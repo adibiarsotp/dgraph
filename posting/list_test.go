@@ -29,9 +29,9 @@ import (
 	"github.com/dgraph-io/badger/badger"
 	"github.com/stretchr/testify/require"
 
-	"gopkg.in/adibiarsotp/dgraph.vo/group"
-	"gopkg.in/adibiarsotp/dgraph.vo/protos"
-	"gopkg.in/adibiarsotp/dgraph.vo/x"
+	"gopkg.in/adibiarsotp/dgraph.v0/group"
+	"gopkg.in/adibiarsotp/dgraph.v0/protos"
+	"gopkg.in/adibiarsotp/dgraph.v0/x"
 )
 
 func listToArray(t *testing.T, afterUid uint64, l *List) []uint64 {

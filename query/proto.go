@@ -20,9 +20,9 @@ package query
 import (
 	"time"
 
-	"gopkg.in/adibiarsotp/dgraph.vo/protos"
-	"gopkg.in/adibiarsotp/dgraph.vo/types"
-	"gopkg.in/adibiarsotp/dgraph.vo/x"
+	"gopkg.in/adibiarsotp/dgraph.v0/protos"
+	"gopkg.in/adibiarsotp/dgraph.v0/types"
+	"gopkg.in/adibiarsotp/dgraph.v0/x"
 	geom "github.com/twpayne/go-geom"
 )
 

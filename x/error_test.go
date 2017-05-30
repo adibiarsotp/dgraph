@@ -25,12 +25,12 @@ import (
 )
 
 const originalError = `some nice error
-gopkg.in/adibiarsotp/dgraph.vo/x.Errorf
-	/home/jchiu/go/src/gopkg.in/adibiarsotp/dgraph.vo/x/error.go:90
-gopkg.in/adibiarsotp/dgraph.vo/x.someTestFunc
-	/home/jchiu/go/src/gopkg.in/adibiarsotp/dgraph.vo/x/error_test.go:12
-gopkg.in/adibiarsotp/dgraph.vo/x.TestTraceError
-	/home/jchiu/go/src/gopkg.in/adibiarsotp/dgraph.vo/x/error_test.go:16
+gopkg.in/adibiarsotp/dgraph.v0/x.Errorf
+	/home/jchiu/go/src/gopkg.in/adibiarsotp/dgraph.v0/x/error.go:90
+gopkg.in/adibiarsotp/dgraph.v0/x.someTestFunc
+	/home/jchiu/go/src/gopkg.in/adibiarsotp/dgraph.v0/x/error_test.go:12
+gopkg.in/adibiarsotp/dgraph.v0/x.TestTraceError
+	/home/jchiu/go/src/gopkg.in/adibiarsotp/dgraph.v0/x/error_test.go:16
 testing.tRunner
 	/usr/lib/go-1.7/src/testing/testing.go:610
 runtime.goexit

@@ -25,13 +25,13 @@ import (
 	"github.com/dgraph-io/badger/badger"
 	"golang.org/x/net/context"
 
-	"gopkg.in/adibiarsotp/dgraph.vo/group"
-	"gopkg.in/adibiarsotp/dgraph.vo/posting"
-	"gopkg.in/adibiarsotp/dgraph.vo/protos"
-	"gopkg.in/adibiarsotp/dgraph.vo/schema"
-	"gopkg.in/adibiarsotp/dgraph.vo/tok"
-	"gopkg.in/adibiarsotp/dgraph.vo/types"
-	"gopkg.in/adibiarsotp/dgraph.vo/x"
+	"gopkg.in/adibiarsotp/dgraph.v0/group"
+	"gopkg.in/adibiarsotp/dgraph.v0/posting"
+	"gopkg.in/adibiarsotp/dgraph.v0/protos"
+	"gopkg.in/adibiarsotp/dgraph.v0/schema"
+	"gopkg.in/adibiarsotp/dgraph.v0/tok"
+	"gopkg.in/adibiarsotp/dgraph.v0/types"
+	"gopkg.in/adibiarsotp/dgraph.v0/x"
 )
 
 var emptySortResult protos.SortResult

@@ -26,10 +26,10 @@ import (
 	"github.com/dgraph-io/badger/badger"
 	"github.com/stretchr/testify/require"
 
-	"gopkg.in/adibiarsotp/dgraph.vo/protos"
-	"gopkg.in/adibiarsotp/dgraph.vo/schema"
-	"gopkg.in/adibiarsotp/dgraph.vo/types"
-	"gopkg.in/adibiarsotp/dgraph.vo/x"
+	"gopkg.in/adibiarsotp/dgraph.v0/protos"
+	"gopkg.in/adibiarsotp/dgraph.v0/schema"
+	"gopkg.in/adibiarsotp/dgraph.v0/types"
+	"gopkg.in/adibiarsotp/dgraph.v0/x"
 )
 
 const schemaStr = `

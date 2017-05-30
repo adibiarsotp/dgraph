@@ -49,17 +49,17 @@ import (
 	"golang.org/x/net/trace"
 	"google.golang.org/grpc"
 
-	"gopkg.in/adibiarsotp/dgraph.vo/gql"
-	"gopkg.in/adibiarsotp/dgraph.vo/group"
-	"gopkg.in/adibiarsotp/dgraph.vo/posting"
-	"gopkg.in/adibiarsotp/dgraph.vo/protos"
-	"gopkg.in/adibiarsotp/dgraph.vo/query"
-	"gopkg.in/adibiarsotp/dgraph.vo/rdf"
-	"gopkg.in/adibiarsotp/dgraph.vo/schema"
-	"gopkg.in/adibiarsotp/dgraph.vo/tok"
-	"gopkg.in/adibiarsotp/dgraph.vo/types"
-	"gopkg.in/adibiarsotp/dgraph.vo/worker"
-	"gopkg.in/adibiarsotp/dgraph.vo/x"
+	"gopkg.in/adibiarsotp/dgraph.v0/gql"
+	"gopkg.in/adibiarsotp/dgraph.v0/group"
+	"gopkg.in/adibiarsotp/dgraph.v0/posting"
+	"gopkg.in/adibiarsotp/dgraph.v0/protos"
+	"gopkg.in/adibiarsotp/dgraph.v0/query"
+	"gopkg.in/adibiarsotp/dgraph.v0/rdf"
+	"gopkg.in/adibiarsotp/dgraph.v0/schema"
+	"gopkg.in/adibiarsotp/dgraph.v0/tok"
+	"gopkg.in/adibiarsotp/dgraph.v0/types"
+	"gopkg.in/adibiarsotp/dgraph.v0/worker"
+	"gopkg.in/adibiarsotp/dgraph.v0/x"
 	"github.com/soheilhy/cmux"
 )
 
@@ -871,7 +871,7 @@ func init() {
 	// the user. In other cases, it should point to the build directory within the repository.
 	flag.StringVar(&uiDir, "ui", uiDir, "Directory which contains assets for the user interface")
 	if uiDir == "" {
-		uiDir = os.Getenv("GOPATH") + "/src/gopkg.in/adibiarsotp/dgraph.vo/dashboard/build"
+		uiDir = os.Getenv("GOPATH") + "/src/gopkg.in/adibiarsotp/dgraph.v0/dashboard/build"
 	}
 }
 

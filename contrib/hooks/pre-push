@@ -1,4 +1,4 @@
 #!/bin/bash
 
-/bin/bash $GOPATH/src/gopkg.in/adibiarsotp/dgraph.vo/test
+/bin/bash $GOPATH/src/gopkg.in/adibiarsotp/dgraph.v0/test
 

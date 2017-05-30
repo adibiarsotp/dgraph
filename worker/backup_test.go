@@ -34,14 +34,14 @@ import (
 	geom "github.com/twpayne/go-geom"
 	"github.com/twpayne/go-geom/encoding/wkb"
 
-	"gopkg.in/adibiarsotp/dgraph.vo/group"
-	"gopkg.in/adibiarsotp/dgraph.vo/posting"
-	"gopkg.in/adibiarsotp/dgraph.vo/protos"
-	"gopkg.in/adibiarsotp/dgraph.vo/types"
+	"gopkg.in/adibiarsotp/dgraph.v0/group"
+	"gopkg.in/adibiarsotp/dgraph.v0/posting"
+	"gopkg.in/adibiarsotp/dgraph.v0/protos"
+	"gopkg.in/adibiarsotp/dgraph.v0/types"
 
-	"gopkg.in/adibiarsotp/dgraph.vo/rdf"
-	"gopkg.in/adibiarsotp/dgraph.vo/schema"
-	"gopkg.in/adibiarsotp/dgraph.vo/x"
+	"gopkg.in/adibiarsotp/dgraph.v0/rdf"
+	"gopkg.in/adibiarsotp/dgraph.v0/schema"
+	"gopkg.in/adibiarsotp/dgraph.v0/x"
 )
 
 func populateGraphBackup(t *testing.T) {

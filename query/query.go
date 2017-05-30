@@ -31,14 +31,14 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
-	"gopkg.in/adibiarsotp/dgraph.vo/algo"
-	"gopkg.in/adibiarsotp/dgraph.vo/gql"
-	"gopkg.in/adibiarsotp/dgraph.vo/protos"
-	"gopkg.in/adibiarsotp/dgraph.vo/task"
-	"gopkg.in/adibiarsotp/dgraph.vo/types"
-	"gopkg.in/adibiarsotp/dgraph.vo/types/facets"
-	"gopkg.in/adibiarsotp/dgraph.vo/worker"
-	"gopkg.in/adibiarsotp/dgraph.vo/x"
+	"gopkg.in/adibiarsotp/dgraph.v0/algo"
+	"gopkg.in/adibiarsotp/dgraph.v0/gql"
+	"gopkg.in/adibiarsotp/dgraph.v0/protos"
+	"gopkg.in/adibiarsotp/dgraph.v0/task"
+	"gopkg.in/adibiarsotp/dgraph.v0/types"
+	"gopkg.in/adibiarsotp/dgraph.v0/types/facets"
+	"gopkg.in/adibiarsotp/dgraph.v0/worker"
+	"gopkg.in/adibiarsotp/dgraph.v0/x"
 )
 
 /*

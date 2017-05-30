@@ -18,7 +18,7 @@
 // Package gql is responsible for lexing and parsing a GraphQL query/mutation.
 package gql
 
-import "gopkg.in/adibiarsotp/dgraph.vo/lex"
+import "gopkg.in/adibiarsotp/dgraph.v0/lex"
 
 const (
 	leftCurl    = '{'

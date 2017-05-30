@@ -23,7 +23,7 @@ import (
 	"sort"
 	"testing"
 
-	"gopkg.in/adibiarsotp/dgraph.vo/protos"
+	"gopkg.in/adibiarsotp/dgraph.v0/protos"
 	"github.com/stretchr/testify/require"
 )
 

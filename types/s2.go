@@ -21,7 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"gopkg.in/adibiarsotp/dgraph.vo/x"
+	"gopkg.in/adibiarsotp/dgraph.v0/x"
 	"github.com/golang/geo/s2"
 	geom "github.com/twpayne/go-geom"
 	"github.com/twpayne/go-geom/encoding/geojson"

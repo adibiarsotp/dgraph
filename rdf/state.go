@@ -22,8 +22,8 @@ package rdf
 import (
 	"strconv"
 
-	"gopkg.in/adibiarsotp/dgraph.vo/lex"
-	"gopkg.in/adibiarsotp/dgraph.vo/x"
+	"gopkg.in/adibiarsotp/dgraph.v0/lex"
+	"gopkg.in/adibiarsotp/dgraph.v0/x"
 )
 
 // The constants represent different types of lexed Items possible for an rdf N-Quad.

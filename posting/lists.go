@@ -37,8 +37,8 @@ import (
 	"github.com/dgraph-io/badger/badger"
 	"github.com/dgryski/go-farm"
 
-	"gopkg.in/adibiarsotp/dgraph.vo/protos"
-	"gopkg.in/adibiarsotp/dgraph.vo/x"
+	"gopkg.in/adibiarsotp/dgraph.v0/protos"
+	"gopkg.in/adibiarsotp/dgraph.v0/x"
 )
 
 var (

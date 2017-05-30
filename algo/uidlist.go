@@ -21,7 +21,7 @@ import (
 	"container/heap"
 	"sort"
 
-	"gopkg.in/adibiarsotp/dgraph.vo/protos"
+	"gopkg.in/adibiarsotp/dgraph.v0/protos"
 )
 
 const jump = 32 // Jump size in InsersectWithJump.

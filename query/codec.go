@@ -20,7 +20,7 @@ package query
 import (
 	"log"
 
-	"gopkg.in/adibiarsotp/dgraph.vo/protos"
+	"gopkg.in/adibiarsotp/dgraph.v0/protos"
 	"github.com/gogo/protobuf/proto"
 )
 

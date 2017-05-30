@@ -22,8 +22,8 @@ import (
 	"fmt"
 	"math"
 
-	"gopkg.in/adibiarsotp/dgraph.vo/algo"
-	"gopkg.in/adibiarsotp/dgraph.vo/x"
+	"gopkg.in/adibiarsotp/dgraph.v0/algo"
+	"gopkg.in/adibiarsotp/dgraph.v0/x"
 )
 
 func (start *SubGraph) expandRecurse(ctx context.Context,

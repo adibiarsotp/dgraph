@@ -20,7 +20,7 @@ package types
 import (
 	"golang.org/x/crypto/bcrypt"
 
-	"gopkg.in/adibiarsotp/dgraph.vo/x"
+	"gopkg.in/adibiarsotp/dgraph.v0/x"
 )
 
 const (

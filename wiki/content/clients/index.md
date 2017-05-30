@@ -7,13 +7,13 @@ title = "Clients"
 
 Clients communicate with the server using [Protocol Buffers](https://developers.google.com/protocol-buffers) over [gRPC](http://www.grpc.io/). This requires [defining services](http://www.grpc.io/docs/#defining-a-service) and data types in a ''proto'' file and then generating client and server side code using the [protoc compiler](https://github.com/google/protobuf).
 
-The proto file used by Dgraph is located at [graphresponse.proto](https://gopkg.in/adibiarsotp/dgraph.vo/blob/master/protos/graphp/graphresponse.proto).
+The proto file used by Dgraph is located at [graphresponse.proto](https://gopkg.in/adibiarsotp/dgraph.v0/blob/master/protos/graphp/graphresponse.proto).
 
 ## Languages
 
 ### Go
 
-[![GoDoc](https://godoc.org/gopkg.in/adibiarsotp/dgraph.vo/client?status.svg)](https://godoc.org/gopkg.in/adibiarsotp/dgraph.vo/client)
+[![GoDoc](https://godoc.org/gopkg.in/adibiarsotp/dgraph.v0/client?status.svg)](https://godoc.org/gopkg.in/adibiarsotp/dgraph.v0/client)
 
 After you have the followed [Get started]({{< relref "get-started/index.md">}}) and got the server running on `127.0.0.1:8080`, you can use the Go client to run queries and mutations as shown in the example below.
 
@@ -25,7 +25,7 @@ correct [schema type]({{< relref "query-language/index.md#schema" >}}) is specif
 
 To get the Go client, you can run
 ```
-go get -u -v gopkg.in/adibiarsotp/dgraph.vo/client gopkg.in/adibiarsotp/dgraph.vo/protos
+go get -u -v gopkg.in/adibiarsotp/dgraph.v0/client gopkg.in/adibiarsotp/dgraph.v0/protos
 ```
 
 #### Example
@@ -44,8 +44,8 @@ import (
 
 	"google.golang.org/grpc"
 
-	"gopkg.in/adibiarsotp/dgraph.vo/client"
-	"gopkg.in/adibiarsotp/dgraph.vo/protos"
+	"gopkg.in/adibiarsotp/dgraph.v0/client"
+	"gopkg.in/adibiarsotp/dgraph.v0/protos"
 	"github.com/gogo/protobuf/proto"
 	"github.com/twpayne/go-geom/encoding/wkb"
 )

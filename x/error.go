@@ -110,7 +110,7 @@ func Fatalf(format string, args ...interface{}) {
 }
 
 const (
-	dgraphPrefix  = "gopkg.in/adibiarsotp/dgraph.vo/"
+	dgraphPrefix  = "gopkg.in/adibiarsotp/dgraph.v0/"
 	runtimePrefix = "src/runtime/"
 	testingPrefix = "src/testing/"
 )
@@ -131,12 +131,12 @@ func shortenedErrorString(err error) string {
 
 	// Here is a sample input:
 	//	 some error
-	//	 gopkg.in/adibiarsotp/dgraph.vo/x.Errorf
-	//		/home/jchiu/go/src/gopkg.in/adibiarsotp/dgraph.vo/x/error.go:89
+	//	 gopkg.in/adibiarsotp/dgraph.v0/x.Errorf
+	//		/home/jchiu/go/src/gopkg.in/adibiarsotp/dgraph.v0/x/error.go:89
 	//	 main.f
-	//		/home/jchiu/go/src/gopkg.in/adibiarsotp/dgraph.vo/x/tmp/main.go:10
+	//		/home/jchiu/go/src/gopkg.in/adibiarsotp/dgraph.v0/x/tmp/main.go:10
 	//	 main.main
-	//		/home/jchiu/go/src/gopkg.in/adibiarsotp/dgraph.vo/x/tmp/main.go:15
+	//		/home/jchiu/go/src/gopkg.in/adibiarsotp/dgraph.v0/x/tmp/main.go:15
 	//	 runtime.main
 	//		/usr/lib/go-1.7/src/runtime/proc.go:183
 	//	 runtime.goexit
