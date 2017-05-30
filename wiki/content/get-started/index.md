@@ -8,7 +8,7 @@ title = "Get Started"
 [![Wiki](https://img.shields.io/badge/res-wiki-blue.svg)](https://docs.dgraph.io)
 [![Build Status](https://travis-ci.org/dgraph-io/dgraph.svg?branch=master)](https://travis-ci.org/dgraph-io/dgraph)
 [![Coverage Status](https://coveralls.io/repos/github/dgraph-io/dgraph/badge.svg?branch=master)](https://coveralls.io/github/dgraph-io/dgraph?branch=master)
-[![Go Report Card](https://goreportcard.com/badge/github.com/dgraph-io/dgraph)](https://goreportcard.com/report/github.com/dgraph-io/dgraph)
+[![Go Report Card](https://goreportcard.com/badge/github.com/adibiarsotp/dgraph)](https://goreportcard.com/report/github.com/adibiarsotp/dgraph)
 [![Slack Status](http://slack.dgraph.io/badge.svg)](http://slack.dgraph.io)
 
 ## Step 1: Installation
@@ -329,7 +329,7 @@ This should give you an idea of some of the queries Dgraph is capable of. A wide
 
 ## Need Help
 * Please use [discuss.dgraph.io](https://discuss.dgraph.io) for questions, feature requests and discussions.
-* Please use [Github Issues](https://github.com/dgraph-io/dgraph/issues) if you encounter bugs or have feature requests.
+* Please use [Github Issues](https://github.com/adibiarsotp/dgraph/issues) if you encounter bugs or have feature requests.
 * You can also join our [Slack channel](http://slack.dgraph.io).
 
 ## Troubleshooting

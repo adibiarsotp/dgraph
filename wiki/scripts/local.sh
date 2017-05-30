@@ -19,7 +19,7 @@ VERSION_STRING=$(joinVersions)
 ensure_doc_branch() {
   if [ $CURRENT_BRANCH != "master" ] && ! [[ $CURRENT_BRANCH =~ ^release\/v[0-9]\.[0-9]\.[0-9]$ ]]; then
     echo "You can only run documentation on 'master' or 'release/vx.x.x' branches."
-    echo "See: https://github.com/dgraph-io/dgraph/tree/doc/wiki#branch"
+    echo "See: https://github.com/adibiarsotp/dgraph/tree/doc/wiki#branch"
     exit 1
   fi
 }

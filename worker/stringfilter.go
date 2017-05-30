@@ -20,10 +20,10 @@ package worker
 import (
 	"strings"
 
-	"github.com/dgraph-io/dgraph/protos"
-	"github.com/dgraph-io/dgraph/tok"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/tok"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 type matchFn func(types.Val, stringFilter) bool

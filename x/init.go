@@ -30,7 +30,7 @@ import (
 var (
 	configFile = flag.String("config", "",
 		"YAML configuration file containing dgraph settings.")
-	version  = flag.Bool("version", false, "Prints the version of Dgraph")
+	version  = flag.Bool("version dgraph", false, "Prints the version of Dgraph")
 	initFunc []func()
 	logger   *log.Logger
 	isTest   bool

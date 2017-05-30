@@ -29,8 +29,8 @@ import (
 	"github.com/twpayne/go-geom/encoding/geojson"
 	"github.com/twpayne/go-geom/encoding/wkb"
 
-	"github.com/dgraph-io/dgraph/protos"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 // Convert converts the value to given scalar type.

@@ -21,7 +21,7 @@ import (
 	"container/heap"
 	"sort"
 
-	"github.com/dgraph-io/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/protos"
 )
 
 const jump = 32 // Jump size in InsersectWithJump.

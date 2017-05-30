@@ -22,7 +22,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/dgraph-io/dgraph/types"
+	"github.com/adibiarsotp/dgraph/types"
 	"github.com/stretchr/testify/require"
 )
 

@@ -18,8 +18,8 @@
 package tok
 
 import (
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 //  Might want to allow user to replace this.

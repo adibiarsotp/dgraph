@@ -18,7 +18,7 @@
 package types
 
 import (
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 // Should be used only in filtering arg1 by comparing with arg2.
