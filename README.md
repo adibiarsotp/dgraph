@@ -24,12 +24,12 @@ Dgraph is currently at version 0.7. It has 90% of the features planned for v1.0;
 - **Dgraph official documentation is present at [docs.dgraph.io](https://docs.dgraph.io).**
 - For feature requests or questions, visit [https://discuss.dgraph.io](https://discuss.dgraph.io).
 - Check out [the demo at dgraph.io](http://dgraph.io) and [the visualization at play.dgraph.io](http://play.dgraph.io/).
-- Please see [releases tab](https://github.com/adibiarsotp/dgraph/releases) to find the latest release and corresponding release notes.
-- [See the Roadmap](https://github.com/adibiarsotp/dgraph/issues/1) for list of working and planned features.
+- Please see [releases tab](https://gopkg.in/adibiarsotp/dgraph.v81/releases) to find the latest release and corresponding release notes.
+- [See the Roadmap](https://gopkg.in/adibiarsotp/dgraph.v81/issues/1) for list of working and planned features.
 - Read about the latest updates from Dgraph team [on our blog](https://open.dgraph.io/).
 
 ## Developers
-- See a list of issues [that we need help with](https://github.com/adibiarsotp/dgraph/issues?q=is%3Aissue+is%3Aopen+label%3Ahelp_wanted).
+- See a list of issues [that we need help with](https://gopkg.in/adibiarsotp/dgraph.v81/issues?q=is%3Aissue+is%3Aopen+label%3Ahelp_wanted).
 - Please see [contributing to Dgraph](https://wiki.dgraph.io/Contributing_to_Dgraph) for guidelines on contributions.
 
 ## Data Loading and Persistence
@@ -43,6 +43,6 @@ Dgraph is currently at version 0.7. It has 90% of the features planned for v1.0;
 
 ## Contact
 - Please use [discuss.dgraph.io](https://discuss.dgraph.io) for documentation, questions, feature requests and discussions.
-- Please use [Github issue tracker](https://github.com/adibiarsotp/dgraph/issues) for filing bugs or feature requests.
+- Please use [Github issue tracker](https://gopkg.in/adibiarsotp/dgraph.v81/issues) for filing bugs or feature requests.
 - Join [![Slack Status](http://slack.dgraph.io/badge.svg)](http://slack.dgraph.io).
 - Follow us on Twitter [@dgraphlabs](https://twitter.com/dgraphlabs).

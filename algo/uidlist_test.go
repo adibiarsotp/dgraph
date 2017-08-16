@@ -23,8 +23,8 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/adibiarsotp/dgraph/bp128"
-	"github.com/adibiarsotp/dgraph/protos"
+	"gopkg.in/adibiarsotp/dgraph.v81/bp128"
+	"gopkg.in/adibiarsotp/dgraph.v81/protos"
 	"github.com/stretchr/testify/require"
 )
 

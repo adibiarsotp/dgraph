@@ -17,13 +17,13 @@
 package dgraph
 
 import (
-	"github.com/adibiarsotp/dgraph/client"
-	"github.com/adibiarsotp/dgraph/group"
-	"github.com/adibiarsotp/dgraph/posting"
-	"github.com/adibiarsotp/dgraph/protos"
-	"github.com/adibiarsotp/dgraph/schema"
-	"github.com/adibiarsotp/dgraph/worker"
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.v81/client"
+	"gopkg.in/adibiarsotp/dgraph.v81/group"
+	"gopkg.in/adibiarsotp/dgraph.v81/posting"
+	"gopkg.in/adibiarsotp/dgraph.v81/protos"
+	"gopkg.in/adibiarsotp/dgraph.v81/schema"
+	"gopkg.in/adibiarsotp/dgraph.v81/worker"
+	"gopkg.in/adibiarsotp/dgraph.v81/x"
 )
 
 func GetDefaultEmbeddedConfig() Options {

@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/adibiarsotp/dgraph/protos"
+	"gopkg.in/adibiarsotp/dgraph.v81/protos"
 )
 
 func unmarshalToStruct(f reflect.StructField, n *protos.Node, val reflect.Value) error {

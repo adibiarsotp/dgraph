@@ -24,7 +24,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.v81/x"
 )
 
 // listCache is an LRU cache.

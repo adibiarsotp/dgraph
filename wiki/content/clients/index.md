@@ -7,14 +7,14 @@ title = "Clients"
 
 All clients can communicate with the server via the HTTP endpoint (set with option `--port` when starting Dgraph).  Queries and mutations can be submitted and JSON is returned.
 
-Go clients can use the clients package and communicate with the server over [gRPC](http://www.grpc.io/).  Internally this uses [Protocol Buffers](https://developers.google.com/protocol-buffers) and the proto file used by Dgraph is located at [graphresponse.proto](https://github.com/adibiarsotp/dgraph/blob/master/protos/graphresponse.proto).
+Go clients can use the clients package and communicate with the server over [gRPC](http://www.grpc.io/).  Internally this uses [Protocol Buffers](https://developers.google.com/protocol-buffers) and the proto file used by Dgraph is located at [graphresponse.proto](https://gopkg.in/adibiarsotp/dgraph.v81/blob/master/protos/graphresponse.proto).
 
 
 ## Languages
 
 ### Go
 
-[![GoDoc](https://godoc.org/github.com/adibiarsotp/dgraph/client?status.svg)](https://godoc.org/github.com/adibiarsotp/dgraph/client)
+[![GoDoc](https://godoc.org/gopkg.in/adibiarsotp/dgraph.v81/client?status.svg)](https://godoc.org/gopkg.in/adibiarsotp/dgraph.v81/client)
 
 The go client communicates with the server on the grpc port (set with option `--grpc_port` when starting Dgraph).
 
@@ -23,16 +23,16 @@ The go client communicates with the server on the grpc port (set with option `--
 
 Go get the client:
 ```
-go get -u -v github.com/adibiarsotp/dgraph/client
+go get -u -v gopkg.in/adibiarsotp/dgraph.v81/client
 ```
 
 #### Examples
 
-The client [GoDoc](https://godoc.org/github.com/adibiarsotp/dgraph/client) has specifications of all functions and examples.
+The client [GoDoc](https://godoc.org/gopkg.in/adibiarsotp/dgraph.v81/client) has specifications of all functions and examples.
 
-Larger examples can be found [here](https://github.com/adibiarsotp/dgraph/tree/master/wiki/resources/examples/goclient).  And [this](https://open.dgraph.io/post/client0.8.0) blog post explores the examples further.
+Larger examples can be found [here](https://gopkg.in/adibiarsotp/dgraph.v81/tree/master/wiki/resources/examples/goclient).  And [this](https://open.dgraph.io/post/client0.8.0) blog post explores the examples further.
 
-The app [dgraphloader](https://github.com/adibiarsotp/dgraph/tree/master/cmd/dgraphloader) uses the client interface to batch concurrent mutations.
+The app [dgraphloader](https://gopkg.in/adibiarsotp/dgraph.v81/tree/master/cmd/dgraphloader) uses the client interface to batch concurrent mutations.
 
 {{% notice "note" %}}As with mutations through a mutation block, [schema type]({{< relref "query-language/index.md#schema" >}}) needs to be set for the edges, or schema is derived based on first mutation received by the server. {{% /notice %}}
 

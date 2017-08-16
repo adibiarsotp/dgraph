@@ -22,9 +22,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/adibiarsotp/dgraph/lex"
-	"github.com/adibiarsotp/dgraph/types"
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.v81/lex"
+	"gopkg.in/adibiarsotp/dgraph.v81/types"
+	"gopkg.in/adibiarsotp/dgraph.v81/x"
 )
 
 type mathTreeStack struct{ a []*MathTree }

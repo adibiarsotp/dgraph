@@ -20,10 +20,10 @@ package rdf
 import (
 	"testing"
 
-	"github.com/adibiarsotp/dgraph/protos"
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.v81/protos"
+	"gopkg.in/adibiarsotp/dgraph.v81/x"
 
-	"github.com/adibiarsotp/dgraph/types/facets"
+	"gopkg.in/adibiarsotp/dgraph.v81/types/facets"
 	"github.com/stretchr/testify/assert"
 )
 

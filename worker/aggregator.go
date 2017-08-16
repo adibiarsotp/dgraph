@@ -17,7 +17,7 @@
 
 package worker
 
-import "github.com/adibiarsotp/dgraph/types"
+import "gopkg.in/adibiarsotp/dgraph.v81/types"
 
 func CouldApplyAggregatorOn(agrtr string, typ types.TypeID) bool {
 	if !typ.IsScalar() {

@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger"
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.v81/x"
 )
 
 type waterMark struct {

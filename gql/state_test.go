@@ -22,7 +22,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/adibiarsotp/dgraph/lex"
+	"gopkg.in/adibiarsotp/dgraph.v81/lex"
 )
 
 func TestNewLexer(t *testing.T) {

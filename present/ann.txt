@@ -11,7 +11,7 @@ Features:
 - Network calls are proportional to complexity of query, not number of results.
 - Supports GraphQL as query language.
 - (planned) Shard replication, High availability, Crash resilience.
-- (roadmap) https://github.com/adibiarsotp/dgraph/issues/1
+- (roadmap) https://gopkg.in/adibiarsotp/dgraph.v81/issues/1
 
 Performance (GCE n1-standard-4, SSD):
 - Loads up 21M RDFs from Freebase Film data in 20 mins.

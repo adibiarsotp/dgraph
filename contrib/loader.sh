@@ -56,7 +56,7 @@ go build .
 ./dgraphloader -r $benchmark/goldendata.rdf.gz -x true
 popd &> /dev/null
 
-pushd $GOPATH/src/github.com/adibiarsotp/dgraph/contrib/indextest &> /dev/null
+pushd $GOPATH/src/gopkg.in/adibiarsotp/dgraph.v81/contrib/indextest &> /dev/null
 
 function quit {
 	curl localhost:8080/admin/shutdown

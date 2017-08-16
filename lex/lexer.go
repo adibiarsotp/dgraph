@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"unicode/utf8"
 
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.v81/x"
 )
 
 const EOF = -1

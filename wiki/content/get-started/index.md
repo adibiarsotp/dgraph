@@ -393,7 +393,7 @@ Depending on the machine used, it can take a few minutes to load the 21 million 
 ## Need Help
 
 * Please use [discuss.dgraph.io](https://discuss.dgraph.io) for questions, feature requests and discussions.
-* Please use [Github Issues](https://github.com/adibiarsotp/dgraph/issues) if you encounter bugs or have feature requests.
+* Please use [Github Issues](https://gopkg.in/adibiarsotp/dgraph.v81/issues) if you encounter bugs or have feature requests.
 * You can also join our [Slack channel](http://slack.dgraph.io).
 
 ## Troubleshooting

@@ -16,7 +16,7 @@
 
 package types
 
-import "github.com/adibiarsotp/dgraph/x"
+import "gopkg.in/adibiarsotp/dgraph.v81/x"
 
 // Should be used only in filtering arg1 by comparing with arg2.
 // arg2 is reference Val to which arg1 is compared.

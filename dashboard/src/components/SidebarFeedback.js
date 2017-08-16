@@ -32,7 +32,7 @@ const SidebarFeedback = () => {
           </li>
           <li>
             <a
-              href="https://github.com/adibiarsotp/dgraph/issues/new"
+              href="https://gopkg.in/adibiarsotp/dgraph.v81/issues/new"
               target="_blank"
             >
               <i className="fa fa-external-link link-icon" />

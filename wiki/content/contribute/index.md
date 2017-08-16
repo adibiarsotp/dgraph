@@ -14,7 +14,7 @@ title = "Contribute to Dgraph"
 
 ### Setup Dgraph from source repo
 
-    $ go get -t -v github.com/adibiarsotp/dgraph/...
+    $ go get -t -v gopkg.in/adibiarsotp/dgraph.v81/...
 
 This will put the source code in a Git repo under `$GOPATH/src/github.com/adibiarsotp/dgraph` and compile the binaries to `$GOPATH/bin`.
 
@@ -55,9 +55,9 @@ Run the `test` script in the root folder.
     $ ./test
     
     Running tests. Ignoring vendor folder.
-    ok      github.com/adibiarsotp/dgraph/algo        0.013s
-    ok      github.com/adibiarsotp/dgraph/client      0.029s
-    ok      github.com/adibiarsotp/dgraph/client_test 2.841s
+    ok      gopkg.in/adibiarsotp/dgraph.v81/algo        0.013s
+    ok      gopkg.in/adibiarsotp/dgraph.v81/client      0.029s
+    ok      gopkg.in/adibiarsotp/dgraph.v81/client_test 2.841s
     …
 
 **Badger**

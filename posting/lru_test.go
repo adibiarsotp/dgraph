@@ -21,7 +21,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/adibiarsotp/dgraph/protos"
+	"gopkg.in/adibiarsotp/dgraph.v81/protos"
 	"github.com/stretchr/testify/require"
 )
 

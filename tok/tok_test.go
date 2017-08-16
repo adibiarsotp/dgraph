@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/adibiarsotp/dgraph/types"
+	"gopkg.in/adibiarsotp/dgraph.v81/types"
 	"github.com/stretchr/testify/require"
 )
 

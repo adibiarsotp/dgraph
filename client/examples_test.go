@@ -26,8 +26,8 @@ import (
 	"time"
 	"os"
 
-	"github.com/adibiarsotp/dgraph/client"
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.v81/client"
+	"gopkg.in/adibiarsotp/dgraph.v81/x"
 	"github.com/gogo/protobuf/proto"
 	"google.golang.org/grpc"
 )

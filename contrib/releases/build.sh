@@ -3,7 +3,7 @@
 # This script is used to compile and tar gzip the release binaries so that they
 # can be uploaded to Github. It would typically only be used by Dgraph developers
 # while doing a new release. If you are looking to build Dgraph, you should run a
-# go build from inside $GOPATH/src/github.com/adibiarsotp/dgraph/cmd/dgraph
+# go build from inside $GOPATH/src/gopkg.in/adibiarsotp/dgraph.v81/cmd/dgraph
 
 # Exit script in case an error is encountered.
 set -e
@@ -36,13 +36,13 @@ mkdir $tmp_dir;
 lastCommitSHA1=$(git rev-parse --short HEAD);
 gitBranch=$(git rev-parse --abbrev-ref HEAD)
 lastCommitTime=$(git log -1 --format=%ci)
-dgraph_cmd=$GOPATH/src/github.com/adibiarsotp/dgraph/cmd;
+dgraph_cmd=$GOPATH/src/gopkg.in/adibiarsotp/dgraph.v81/cmd;
 ui="/usr/local/share/dgraph/assets"
 
-release="github.com/adibiarsotp/dgraph/x.dgraphVersion"
-branch="github.com/adibiarsotp/dgraph/x.gitBranch"
-commitSHA1="github.com/adibiarsotp/dgraph/x.lastCommitSHA"
-commitTime="github.com/adibiarsotp/dgraph/x.lastCommitTime"
+release="gopkg.in/adibiarsotp/dgraph.v81/x.dgraphVersion"
+branch="gopkg.in/adibiarsotp/dgraph.v81/x.gitBranch"
+commitSHA1="gopkg.in/adibiarsotp/dgraph.v81/x.lastCommitSHA"
+commitTime="gopkg.in/adibiarsotp/dgraph.v81/x.lastCommitTime"
 uiDir="main.uiDir"
 
 echo -e "\033[1;33mBuilding binaries\033[0m"
@@ -90,6 +90,6 @@ rm -rf $tmp_dir
 
 echo -e "Calculating and storing checksum for tar gzipped assets."
 cd $cur_dir
-GZIP=-n tar -zcf assets.tar.gz -C $GOPATH/src/github.com/adibiarsotp/dgraph/dashboard/build .
+GZIP=-n tar -zcf assets.tar.gz -C $GOPATH/src/gopkg.in/adibiarsotp/dgraph.v81/dashboard/build .
 checksum=$($digest_cmd assets.tar.gz | awk '{print $1}')
 echo "$checksum /usr/local/share/dgraph/assets.tar.gz" >> $checksum_file

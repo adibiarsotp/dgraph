@@ -8,9 +8,9 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	"github.com/adibiarsotp/dgraph/client"
-	"github.com/adibiarsotp/dgraph/dgraph"
-	"github.com/adibiarsotp/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.v81/client"
+	"gopkg.in/adibiarsotp/dgraph.v81/dgraph"
+	"gopkg.in/adibiarsotp/dgraph.v81/x"
 )
 
 func main() {

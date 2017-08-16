@@ -10,7 +10,7 @@ If you followed one of the [recommended installation]({{< relref "get-started/in
 
 ### Manual download (Optional)
 
-If you don't want to follow the automatic installation method, you could manually download the appropriate tar for your platform from **[Dgraph releases](https://github.com/adibiarsotp/dgraph/releases)**. After downloading the tar for your platform from Github, extract the binaries to `/usr/local/bin` like so.
+If you don't want to follow the automatic installation method, you could manually download the appropriate tar for your platform from **[Dgraph releases](https://gopkg.in/adibiarsotp/dgraph.v81/releases)**. After downloading the tar for your platform from Github, extract the binaries to `/usr/local/bin` like so.
 
 ```sh
 # For Linux
@@ -45,7 +45,7 @@ Make sure you have [Go](https://golang.org/dl/) (version >= 1.8) installed.
 After installing Go, run
 ```
 # This should install the following binaries in your $GOPATH/bin: dgraph and dgraphloader.
-go get -u github.com/adibiarsotp/dgraph/...
+go get -u gopkg.in/adibiarsotp/dgraph.v81/...
 ```
 
 The binaries are located in `cmd/dgraph` and `cmd/dgraphloader`. If you get errors related to `grpc` while building
@@ -462,4 +462,4 @@ On EC2/GCE instances, the recommended minimum is 8GB. It's recommended to set `-
 
 ## See Also
 
-* [Product Roadmap to v1.0](https://github.com/adibiarsotp/dgraph/issues/1)
+* [Product Roadmap to v1.0](https://gopkg.in/adibiarsotp/dgraph.v81/issues/1)
