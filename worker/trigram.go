@@ -22,11 +22,11 @@ import (
 
 	cindex "github.com/google/codesearch/index"
 
-	"github.com/dgraph-io/dgraph/algo"
-	"github.com/dgraph-io/dgraph/posting"
-	"github.com/dgraph-io/dgraph/protos"
-	"github.com/dgraph-io/dgraph/tok"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/algo"
+	"github.com/adibiarsotp/dgraph/posting"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/tok"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 const maxUidsForTrigram = 1000000

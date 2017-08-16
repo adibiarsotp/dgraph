@@ -33,13 +33,13 @@ import (
 
 	"github.com/dgryski/go-farm"
 
-	"github.com/dgraph-io/dgraph/algo"
-	"github.com/dgraph-io/dgraph/bp128"
-	"github.com/dgraph-io/dgraph/group"
-	"github.com/dgraph-io/dgraph/protos"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/types/facets"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/algo"
+	"github.com/adibiarsotp/dgraph/bp128"
+	"github.com/adibiarsotp/dgraph/group"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/types/facets"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 var (

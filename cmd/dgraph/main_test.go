@@ -29,16 +29,16 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/dgraph/dgraph"
-	"github.com/dgraph-io/dgraph/gql"
-	"github.com/dgraph-io/dgraph/group"
-	"github.com/dgraph-io/dgraph/posting"
-	"github.com/dgraph-io/dgraph/protos"
-	"github.com/dgraph-io/dgraph/query"
-	"github.com/dgraph-io/dgraph/schema"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/worker"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/dgraph"
+	"github.com/adibiarsotp/dgraph/gql"
+	"github.com/adibiarsotp/dgraph/group"
+	"github.com/adibiarsotp/dgraph/posting"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/query"
+	"github.com/adibiarsotp/dgraph/schema"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/worker"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 var q0 = `

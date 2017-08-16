@@ -1,8 +1,8 @@
 package query
 
 import (
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 type mathTree struct {

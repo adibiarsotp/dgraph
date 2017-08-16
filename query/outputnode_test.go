@@ -27,7 +27,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/dgraph/types"
+	"github.com/adibiarsotp/dgraph/types"
 )
 
 func makeFastJsonNode() *fastJsonNode {

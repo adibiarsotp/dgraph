@@ -6,10 +6,10 @@ import (
 
 	"golang.org/x/net/trace"
 
-	"github.com/dgraph-io/dgraph/gql"
-	"github.com/dgraph-io/dgraph/protos"
-	"github.com/dgraph-io/dgraph/worker"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/gql"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/worker"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 type InternalMutation struct {

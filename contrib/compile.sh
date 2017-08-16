@@ -7,12 +7,12 @@ release_version="$(git describe --abbrev=0)-dev";
 lastCommitSHA1=$(git rev-parse --short HEAD);
 gitBranch=$(git rev-parse --abbrev-ref HEAD)
 lastCommitTime=$(git log -1 --format=%ci)
-dgraph_cmd=$GOPATH/src/github.com/dgraph-io/dgraph/cmd;
+dgraph_cmd=$GOPATH/src/github.com/adibiarsotp/dgraph/cmd;
 
-release="github.com/dgraph-io/dgraph/x.dgraphVersion"
-branch="github.com/dgraph-io/dgraph/x.gitBranch"
-commitSHA1="github.com/dgraph-io/dgraph/x.lastCommitSHA"
-commitTime="github.com/dgraph-io/dgraph/x.lastCommitTime"
+release="github.com/adibiarsotp/dgraph/x.dgraphVersion"
+branch="github.com/adibiarsotp/dgraph/x.gitBranch"
+commitSHA1="github.com/adibiarsotp/dgraph/x.lastCommitSHA"
+commitTime="github.com/adibiarsotp/dgraph/x.lastCommitTime"
 
 echo -e "\033[1;33mBuilding binaries\033[0m"
 echo "dgraph"

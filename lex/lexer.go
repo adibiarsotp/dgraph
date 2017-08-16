@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"unicode/utf8"
 
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 const EOF = -1

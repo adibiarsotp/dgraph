@@ -1,6 +1,6 @@
 # Go client
 
-[![GoDoc](https://godoc.org/github.com/dgraph-io/dgraph/client?status.svg)](https://godoc.org/github.com/dgraph-io/dgraph/client)
+[![GoDoc](https://godoc.org/github.com/adibiarsotp/dgraph/client?status.svg)](https://godoc.org/github.com/adibiarsotp/dgraph/client)
 
 This package provides helper function for interacting with the Dgraph server.
 You can use it to run mutations and queries. You can also use BatchMutation

@@ -33,8 +33,8 @@ import (
 
 	"github.com/dgraph-io/badger"
 	"github.com/dgraph-io/badger/table"
-	"github.com/dgraph-io/dgraph/protos"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 var (

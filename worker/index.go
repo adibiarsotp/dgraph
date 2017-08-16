@@ -23,9 +23,9 @@ import (
 	"golang.org/x/net/context"
 	"golang.org/x/net/trace"
 
-	"github.com/dgraph-io/dgraph/posting"
-	"github.com/dgraph-io/dgraph/schema"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/posting"
+	"github.com/adibiarsotp/dgraph/schema"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 func (n *node) rebuildOrDelIndex(ctx context.Context, attr string, rebuild bool) error {

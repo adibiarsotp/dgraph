@@ -20,11 +20,11 @@ package schema
 import (
 	"strings"
 
-	"github.com/dgraph-io/dgraph/lex"
-	"github.com/dgraph-io/dgraph/protos"
-	"github.com/dgraph-io/dgraph/tok"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/lex"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/tok"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 func From(s *protos.SchemaUpdate) protos.SchemaUpdate {

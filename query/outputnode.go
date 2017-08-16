@@ -29,10 +29,10 @@ import (
 	geom "github.com/twpayne/go-geom"
 	"github.com/twpayne/go-geom/encoding/geojson"
 
-	"github.com/dgraph-io/dgraph/algo"
-	"github.com/dgraph-io/dgraph/protos"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/algo"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 const (

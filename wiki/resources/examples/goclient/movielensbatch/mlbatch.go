@@ -93,8 +93,8 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/dgraph-io/dgraph/client"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/client"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 var (

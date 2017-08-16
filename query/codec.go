@@ -20,7 +20,7 @@ package query
 import (
 	"log"
 
-	"github.com/dgraph-io/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/protos"
 	"github.com/gogo/protobuf/proto"
 )
 

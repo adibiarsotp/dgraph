@@ -19,8 +19,8 @@ package client
 import (
 	"testing"
 
-	"github.com/dgraph-io/dgraph/protos"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/x"
 	"github.com/stretchr/testify/assert"
 )
 

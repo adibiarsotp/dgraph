@@ -19,9 +19,9 @@ package dgraph
 import (
 	"path/filepath"
 
-	"github.com/dgraph-io/dgraph/posting"
-	"github.com/dgraph-io/dgraph/worker"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/posting"
+	"github.com/adibiarsotp/dgraph/worker"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 type Options struct {

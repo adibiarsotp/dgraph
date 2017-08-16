@@ -21,8 +21,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/dgraph-io/dgraph/protos"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 type sortBase struct {

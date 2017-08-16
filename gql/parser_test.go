@@ -21,7 +21,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/dgraph-io/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/protos"
 	"github.com/stretchr/testify/require"
 )
 
