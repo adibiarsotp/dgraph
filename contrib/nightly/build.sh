@@ -96,7 +96,7 @@ else
 	OS="linux"
 fi
 
-DGRAPH=$GOPATH/src/github.com/adibiarsotp/dgraph
+DGRAPH=$GOPATH/src/gopkg.in/adibiarsotp/dgraph.v81
 BUILD_DIR=$DGRAPH/contrib
 source ${BUILD_DIR}/nightly/github.sh
 

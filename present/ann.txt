@@ -2,7 +2,7 @@ This is a post to announce Dgraph, an open source, distributed, scalable native 
 
 The design and inspiration is drawn from my experiences working in Google Knowledge Infra group. Dgraph is under active development, and is looking to hire talented engineers.
 
-Github page: https://github.com/adibiarsotp/dgraph
+Github page: https://gopkg.in/adibiarsotp/dgraph.v81
 
 Features:
 - Aimed at real time user queries.

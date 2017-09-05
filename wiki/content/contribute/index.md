@@ -16,7 +16,7 @@ title = "Contribute to Dgraph"
 
     $ go get -t -v gopkg.in/adibiarsotp/dgraph.v81/...
 
-This will put the source code in a Git repo under `$GOPATH/src/github.com/adibiarsotp/dgraph` and compile the binaries to `$GOPATH/bin`.
+This will put the source code in a Git repo under `$GOPATH/src/gopkg.in/adibiarsotp/dgraph.v81` and compile the binaries to `$GOPATH/bin`.
 
 ### Setup Badger from source repo
 

@@ -40,7 +40,7 @@ const SidebarInfo = () => {
             </a>
           </li>
           <li>
-            <a href="https://github.com/adibiarsotp/dgraph" target="_blank">
+            <a href="https://gopkg.in/adibiarsotp/dgraph.v81" target="_blank">
               <i className="fa fa-external-link link-icon" />
               GitHub
             </a>

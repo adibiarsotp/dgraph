@@ -22,7 +22,7 @@ $ sudo tar -C /usr/local/bin -xzf dgraph-darwin-amd64-VERSION.tar.gz
 
 ### Nightly
 
-Nightly builds from Dgraph master branch at https://github.com/adibiarsotp/dgraph are available from https://nightly.dgraph.io.  To install run:
+Nightly builds from Dgraph master branch at https://gopkg.in/adibiarsotp/dgraph.v81 are available from https://nightly.dgraph.io.  To install run:
 
 ```sh
 curl https://nightly.dgraph.io -sSf | bash
