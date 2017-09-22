@@ -12,7 +12,7 @@ import (
 	"runtime"
 	"strconv"
 
-	"github.com/dgraph-io/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.v82/x"
 )
 
 func main() {

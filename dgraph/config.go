@@ -20,9 +20,9 @@ import (
 	"expvar"
 	"path/filepath"
 
-	"github.com/dgraph-io/dgraph/posting"
-	"github.com/dgraph-io/dgraph/worker"
-	"github.com/dgraph-io/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.v82/posting"
+	"gopkg.in/adibiarsotp/dgraph.v82/worker"
+	"gopkg.in/adibiarsotp/dgraph.v82/x"
 )
 
 type Options struct {

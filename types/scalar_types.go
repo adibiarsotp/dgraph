@@ -19,7 +19,7 @@ package types
 import (
 	"time"
 
-	"github.com/dgraph-io/dgraph/protos"
+	"gopkg.in/adibiarsotp/dgraph.v82/protos"
 	geom "github.com/twpayne/go-geom"
 )
 

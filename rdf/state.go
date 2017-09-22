@@ -22,7 +22,7 @@ package rdf
 import (
 	"strconv"
 
-	"github.com/dgraph-io/dgraph/lex"
+	"gopkg.in/adibiarsotp/dgraph.v82/lex"
 )
 
 // The constants represent different types of lexed Items possible for an rdf N-Quad.

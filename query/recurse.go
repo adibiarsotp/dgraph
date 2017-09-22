@@ -24,8 +24,8 @@ import (
 
 	"golang.org/x/net/trace"
 
-	"github.com/dgraph-io/dgraph/algo"
-	"github.com/dgraph-io/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.v82/algo"
+	"gopkg.in/adibiarsotp/dgraph.v82/x"
 )
 
 func (start *SubGraph) expandRecurse(ctx context.Context, next chan bool, rch chan error) {

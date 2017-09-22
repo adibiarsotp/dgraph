@@ -47,7 +47,7 @@ Badger has these design goals in mind:
 
 ## Users
 
-Badger is currently being used by [Dgraph](https://github.com/dgraph-io/dgraph).
+Badger is currently being used by [Dgraph](https://gopkg.in/adibiarsotp/dgraph.v82).
 
 *If you're using Badger in a project, let us know.*
 

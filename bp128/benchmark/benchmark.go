@@ -9,8 +9,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/dgraph-io/dgraph/bp128"
-	"github.com/dgraph-io/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.v82/bp128"
+	"gopkg.in/adibiarsotp/dgraph.v82/x"
 )
 
 const (

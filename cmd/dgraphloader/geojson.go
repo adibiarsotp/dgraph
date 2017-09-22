@@ -7,7 +7,7 @@ import (
 	"io"
 	"log"
 
-	"github.com/dgraph-io/dgraph/client"
+	"gopkg.in/adibiarsotp/dgraph.v82/client"
 	"github.com/twpayne/go-geom/encoding/geojson"
 )
 

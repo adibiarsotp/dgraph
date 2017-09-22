@@ -21,7 +21,7 @@ done
 
 tmp=${tmp:-tmp}
 
-go install -race github.com/dgraph-io/dgraph/cmd/bulkloader
+go install -race gopkg.in/adibiarsotp/dgraph.v82/cmd/bulkloader
 
 function run_test {
 	[[ $# == 2 ]] || { echo "bad args"; exit 1; }

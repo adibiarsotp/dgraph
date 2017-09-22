@@ -19,7 +19,7 @@ package types
 import (
 	"testing"
 
-	"github.com/dgraph-io/dgraph/protos"
+	"gopkg.in/adibiarsotp/dgraph.v82/protos"
 	"github.com/stretchr/testify/require"
 )
 
