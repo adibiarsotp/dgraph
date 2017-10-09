@@ -18,7 +18,7 @@
 package tok
 
 import (
-	"github.com/dgraph-io/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.v82/x"
 
 	"github.com/blevesearch/bleve/analysis/analyzer/custom"
 	"github.com/blevesearch/bleve/analysis/token/lowercase"

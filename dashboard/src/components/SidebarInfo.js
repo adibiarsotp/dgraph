@@ -40,7 +40,7 @@ const SidebarInfo = () => {
             </a>
           </li>
           <li>
-            <a href="https://github.com/dgraph-io/dgraph" target="_blank">
+            <a href="https://gopkg.in/adibiarsotp/dgraph.v82" target="_blank">
               <i className="fa fa-external-link link-icon" />
               GitHub
             </a>
@@ -59,7 +59,7 @@ const SidebarInfo = () => {
         <p>
           <a
             target="_blank"
-            href="https://github.com/dgraph-io/dgraph/tree/master/dashboard"
+            href="https://gopkg.in/adibiarsotp/dgraph.v82/tree/master/dashboard"
           >
             <i className="fa fa-external-link link-icon" />
             View on Github

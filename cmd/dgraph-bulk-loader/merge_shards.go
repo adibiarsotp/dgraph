@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dgraph-io/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.v82/x"
 )
 
 func mergeMapShardsIntoReduceShards(opt options) {

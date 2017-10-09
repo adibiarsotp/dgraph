@@ -29,7 +29,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/dgraph-io/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.v82/x"
 	"github.com/paulmach/go.geojson"
 )
 

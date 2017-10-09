@@ -33,12 +33,12 @@ import (
 	"github.com/dgraph-io/badger"
 	"golang.org/x/net/context"
 
-	"github.com/dgraph-io/dgraph/posting"
-	"github.com/dgraph-io/dgraph/protos"
-	"github.com/dgraph-io/dgraph/schema"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/types/facets"
-	"github.com/dgraph-io/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.v82/posting"
+	"gopkg.in/adibiarsotp/dgraph.v82/protos"
+	"gopkg.in/adibiarsotp/dgraph.v82/schema"
+	"gopkg.in/adibiarsotp/dgraph.v82/types"
+	"gopkg.in/adibiarsotp/dgraph.v82/types/facets"
+	"gopkg.in/adibiarsotp/dgraph.v82/x"
 	"golang.org/x/net/trace"
 )
 

@@ -6,10 +6,10 @@ import (
 	"sync"
 
 	"github.com/dgraph-io/badger"
-	"github.com/dgraph-io/dgraph/protos"
-	"github.com/dgraph-io/dgraph/types"
-	wk "github.com/dgraph-io/dgraph/worker"
-	"github.com/dgraph-io/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.v82/protos"
+	"gopkg.in/adibiarsotp/dgraph.v82/types"
+	wk "gopkg.in/adibiarsotp/dgraph.v82/worker"
+	"gopkg.in/adibiarsotp/dgraph.v82/x"
 )
 
 type schemaState struct {

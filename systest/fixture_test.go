@@ -32,7 +32,7 @@ func init() {
 		"dgraph",
 		"dgraphzero",
 	} {
-		cmd := exec.Command("go", "install", "github.com/dgraph-io/dgraph/cmd/"+name)
+		cmd := exec.Command("go", "install", "gopkg.in/adibiarsotp/dgraph.v82/cmd/"+name)
 		cmd.Env = os.Environ()
 		if out, err := cmd.CombinedOutput(); err != nil {
 			log.Fatalf("Could not run %q: %s", cmd.Args, string(out))

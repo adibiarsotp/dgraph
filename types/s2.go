@@ -19,7 +19,7 @@ package types
 import (
 	"encoding/json"
 
-	"github.com/dgraph-io/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.v82/x"
 	"github.com/golang/geo/s2"
 	geom "github.com/twpayne/go-geom"
 	"github.com/twpayne/go-geom/encoding/geojson"

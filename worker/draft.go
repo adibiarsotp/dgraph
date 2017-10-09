@@ -30,13 +30,13 @@ import (
 	"golang.org/x/net/trace"
 
 	"github.com/dgraph-io/badger/y"
-	"github.com/dgraph-io/dgraph/algo"
-	"github.com/dgraph-io/dgraph/conn"
-	"github.com/dgraph-io/dgraph/posting"
-	"github.com/dgraph-io/dgraph/protos"
-	"github.com/dgraph-io/dgraph/raftwal"
-	"github.com/dgraph-io/dgraph/schema"
-	"github.com/dgraph-io/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.v82/algo"
+	"gopkg.in/adibiarsotp/dgraph.v82/conn"
+	"gopkg.in/adibiarsotp/dgraph.v82/posting"
+	"gopkg.in/adibiarsotp/dgraph.v82/protos"
+	"gopkg.in/adibiarsotp/dgraph.v82/raftwal"
+	"gopkg.in/adibiarsotp/dgraph.v82/schema"
+	"gopkg.in/adibiarsotp/dgraph.v82/x"
 )
 
 type proposalCtx struct {

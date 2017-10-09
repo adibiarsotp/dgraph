@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgraph-io/dgraph/protos"
+	"gopkg.in/adibiarsotp/dgraph.v82/protos"
 	"github.com/twpayne/go-geom/encoding/geojson"
 	"github.com/twpayne/go-geom/encoding/wkb"
 )

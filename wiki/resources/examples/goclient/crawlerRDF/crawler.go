@@ -26,7 +26,7 @@ This program is an example of how to use the Dgraph go client.  It is one of two
 The other, crawlerMutations, is more focused on running concurrent mutations through the Dgraph
 client.  This crawler is about querying and unmarshalling results.
 
-The Dgraph client interface has docs here : https://godoc.org/github.com/dgraph-io/dgraph/client
+The Dgraph client interface has docs here : https://godoc.org/gopkg.in/adibiarsotp/dgraph.v82/client
 
 
 
@@ -92,8 +92,8 @@ import (
 	//"google.golang.org/grpc/metadata"	// for debug mode
 	//"github.com/gogo/protobuf/proto"	// for with fmt.Printf("Raw Response: %+v\n", proto.MarshalTextString(resp))
 
-	"github.com/dgraph-io/dgraph/client"
-	"github.com/dgraph-io/dgraph/protos"
+	"gopkg.in/adibiarsotp/dgraph.v82/client"
+	"gopkg.in/adibiarsotp/dgraph.v82/protos"
 )
 
 var (

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-pushd $GOPATH/src/github.com/dgraph-io/dgraph/contrib/indextest &> /dev/null
+pushd $GOPATH/src/gopkg.in/adibiarsotp/dgraph.v82/contrib/indextest &> /dev/null
 
 function run_index_test {
   local max_attempts=${ATTEMPTS-5}

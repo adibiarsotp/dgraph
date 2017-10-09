@@ -27,10 +27,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dgraph-io/dgraph/client"
-	"github.com/dgraph-io/dgraph/dgraph"
-	"github.com/dgraph-io/dgraph/protos"
-	"github.com/dgraph-io/dgraph/x"
+	"gopkg.in/adibiarsotp/dgraph.v82/client"
+	"gopkg.in/adibiarsotp/dgraph.v82/dgraph"
+	"gopkg.in/adibiarsotp/dgraph.v82/protos"
+	"gopkg.in/adibiarsotp/dgraph.v82/x"
 	"github.com/stretchr/testify/require"
 )
 

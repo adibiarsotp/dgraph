@@ -5,9 +5,9 @@ set -euo pipefail
 script_dir=$(dirname $(readlink -f "$0"))
 
 echo "Installing binaries..."
-go install github.com/dgraph-io/dgraph/cmd/dgraph-bulk-loader
-go install github.com/dgraph-io/dgraph/cmd/dgraph
-go install github.com/dgraph-io/dgraph/cmd/dgraphzero
+go install gopkg.in/adibiarsotp/dgraph.v82/cmd/dgraph-bulk-loader
+go install gopkg.in/adibiarsotp/dgraph.v82/cmd/dgraph
+go install gopkg.in/adibiarsotp/dgraph.v82/cmd/dgraphzero
 echo "Done."
 
 fail=false
