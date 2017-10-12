@@ -34,15 +34,15 @@ import (
 	geom "github.com/twpayne/go-geom"
 	"github.com/twpayne/go-geom/encoding/wkb"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/gql"
-	"gopkg.in/adibiarsotp/dgraph.v82/posting"
-	"gopkg.in/adibiarsotp/dgraph.v82/protos"
-	"gopkg.in/adibiarsotp/dgraph.v82/types"
-	"gopkg.in/adibiarsotp/dgraph.v82/types/facets"
+	"gopkg.in/adibiarsotp/dgraph.v83/gql"
+	"gopkg.in/adibiarsotp/dgraph.v83/posting"
+	"gopkg.in/adibiarsotp/dgraph.v83/protos"
+	"gopkg.in/adibiarsotp/dgraph.v83/types"
+	"gopkg.in/adibiarsotp/dgraph.v83/types/facets"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/rdf"
-	"gopkg.in/adibiarsotp/dgraph.v82/schema"
-	"gopkg.in/adibiarsotp/dgraph.v82/x"
+	"gopkg.in/adibiarsotp/dgraph.v83/rdf"
+	"gopkg.in/adibiarsotp/dgraph.v83/schema"
+	"gopkg.in/adibiarsotp/dgraph.v83/x"
 )
 
 func populateGraphExport(t *testing.T) {

@@ -14,7 +14,7 @@ import (
 	"math"
 	"sort"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/x"
+	"gopkg.in/adibiarsotp/dgraph.v83/x"
 )
 
 const (

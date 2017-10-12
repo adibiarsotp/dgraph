@@ -24,7 +24,7 @@ This program is an example of how to use the Dgraph go client.  It is one of two
 The other, crawlerRDF, is more focused on queries in the Dgraph client.  Look there if you want to
 learn about queries and Unmarshal().  This crawler is about mutations using the client interface.
 
-The Dgraph client interface has docs here : https://godoc.org/gopkg.in/adibiarsotp/dgraph.v82/client
+The Dgraph client interface has docs here : https://godoc.org/gopkg.in/adibiarsotp/dgraph.v83/client
 
 
 
@@ -85,8 +85,8 @@ import (
 	//"google.golang.org/grpc/metadata"	// for debug mode
 	//"github.com/gogo/protobuf/proto"	// for with fmt.Printf("Raw Response: %+v\n", proto.MarshalTextString(resp))
 
-	"gopkg.in/adibiarsotp/dgraph.v82/client"
-	"gopkg.in/adibiarsotp/dgraph.v82/protos"
+	"gopkg.in/adibiarsotp/dgraph.v83/client"
+	"gopkg.in/adibiarsotp/dgraph.v83/protos"
 )
 
 var (
@@ -100,7 +100,7 @@ var (
 // we just need to say what goes where.
 //
 // See how Unmarshal is used in readMovie() and visitMovie().  Godocs and smaller examples are at
-// https://godoc.org/gopkg.in/adibiarsotp/dgraph.v82/client#Unmarshal
+// https://godoc.org/gopkg.in/adibiarsotp/dgraph.v83/client#Unmarshal
 //
 // See also our crawlerRDF example for more description about Unmarshal and structs.
 type namedNode struct {

@@ -24,8 +24,8 @@ import (
 	"github.com/golang/geo/s2"
 	"github.com/twpayne/go-geom"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/protos"
-	"gopkg.in/adibiarsotp/dgraph.v82/x"
+	"gopkg.in/adibiarsotp/dgraph.v83/protos"
+	"gopkg.in/adibiarsotp/dgraph.v83/x"
 )
 
 // QueryType indicates the type of geo query.

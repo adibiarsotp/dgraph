@@ -14,9 +14,9 @@ title = "Contribute to Dgraph"
 
 ### Setup Dgraph from source repo
 
-    $ go get -t -v gopkg.in/adibiarsotp/dgraph.v82/...
+    $ go get -t -v gopkg.in/adibiarsotp/dgraph.v83/...
 
-This will put the source code in a Git repo under `$GOPATH/src/gopkg.in/adibiarsotp/dgraph.v82` and compile the binaries to `$GOPATH/bin`.
+This will put the source code in a Git repo under `$GOPATH/src/gopkg.in/adibiarsotp/dgraph.v83` and compile the binaries to `$GOPATH/bin`.
 
 ### Setup Badger from source repo
 
@@ -55,9 +55,9 @@ Run the `test` script in the root folder.
     $ ./test
     
     Running tests. Ignoring vendor folder.
-    ok      gopkg.in/adibiarsotp/dgraph.v82/algo        0.013s
-    ok      gopkg.in/adibiarsotp/dgraph.v82/client      0.029s
-    ok      gopkg.in/adibiarsotp/dgraph.v82/client_test 2.841s
+    ok      gopkg.in/adibiarsotp/dgraph.v83/algo        0.013s
+    ok      gopkg.in/adibiarsotp/dgraph.v83/client      0.029s
+    ok      gopkg.in/adibiarsotp/dgraph.v83/client_test 2.841s
     …
 
 **Badger**

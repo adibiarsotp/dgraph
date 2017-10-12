@@ -41,11 +41,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/client"
-	"gopkg.in/adibiarsotp/dgraph.v82/protos"
-	"gopkg.in/adibiarsotp/dgraph.v82/rdf"
-	"gopkg.in/adibiarsotp/dgraph.v82/types"
-	"gopkg.in/adibiarsotp/dgraph.v82/x"
+	"gopkg.in/adibiarsotp/dgraph.v83/client"
+	"gopkg.in/adibiarsotp/dgraph.v83/protos"
+	"gopkg.in/adibiarsotp/dgraph.v83/rdf"
+	"gopkg.in/adibiarsotp/dgraph.v83/types"
+	"gopkg.in/adibiarsotp/dgraph.v83/x"
 
 	"github.com/pkg/profile"
 )

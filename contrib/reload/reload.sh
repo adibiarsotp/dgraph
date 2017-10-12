@@ -43,7 +43,7 @@ updateBranch()
 	git merge -q origin/"$branch"
 }
 
-dgraphRepo=$GOPATH/src/gopkg.in/adibiarsotp/dgraph.v82
+dgraphRepo=$GOPATH/src/gopkg.in/adibiarsotp/dgraph.v83
 benchmarksRepo=$GOPATH/src/github.com/dgraph-io/benchmarks
 schema="data/21million.schema"
 schemaPath="$benchmarksRepo/$schema"

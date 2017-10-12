@@ -47,14 +47,14 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/cockroachdb/cmux"
-	"gopkg.in/adibiarsotp/dgraph.v82/dgraph"
-	"gopkg.in/adibiarsotp/dgraph.v82/gql"
-	"gopkg.in/adibiarsotp/dgraph.v82/posting"
-	"gopkg.in/adibiarsotp/dgraph.v82/protos"
-	"gopkg.in/adibiarsotp/dgraph.v82/query"
-	"gopkg.in/adibiarsotp/dgraph.v82/schema"
-	"gopkg.in/adibiarsotp/dgraph.v82/worker"
-	"gopkg.in/adibiarsotp/dgraph.v82/x"
+	"gopkg.in/adibiarsotp/dgraph.v83/dgraph"
+	"gopkg.in/adibiarsotp/dgraph.v83/gql"
+	"gopkg.in/adibiarsotp/dgraph.v83/posting"
+	"gopkg.in/adibiarsotp/dgraph.v83/protos"
+	"gopkg.in/adibiarsotp/dgraph.v83/query"
+	"gopkg.in/adibiarsotp/dgraph.v83/schema"
+	"gopkg.in/adibiarsotp/dgraph.v83/worker"
+	"gopkg.in/adibiarsotp/dgraph.v83/x"
 	"github.com/pkg/errors"
 )
 
@@ -598,7 +598,7 @@ func init() {
 	flag.StringVar(&uiDir, "ui", uiDir, "Directory which contains assets for the user interface")
 	if uiDir == "" {
 		gopath, _ := bestEffortGopath()
-		uiDir = path.Join(gopath, "src/gopkg.in/adibiarsotp/dgraph.v82/dashboard/build")
+		uiDir = path.Join(gopath, "src/gopkg.in/adibiarsotp/dgraph.v83/dashboard/build")
 	}
 }
 

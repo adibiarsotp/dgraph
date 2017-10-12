@@ -19,8 +19,8 @@ package client
 import (
 	"testing"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/protos"
-	"gopkg.in/adibiarsotp/dgraph.v82/x"
+	"gopkg.in/adibiarsotp/dgraph.v83/protos"
+	"gopkg.in/adibiarsotp/dgraph.v83/x"
 	"github.com/stretchr/testify/assert"
 )
 

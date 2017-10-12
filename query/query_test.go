@@ -40,16 +40,16 @@ import (
 	"github.com/stretchr/testify/require"
 	geom "github.com/twpayne/go-geom"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/algo"
-	"gopkg.in/adibiarsotp/dgraph.v82/client"
-	"gopkg.in/adibiarsotp/dgraph.v82/gql"
-	"gopkg.in/adibiarsotp/dgraph.v82/posting"
-	"gopkg.in/adibiarsotp/dgraph.v82/protos"
+	"gopkg.in/adibiarsotp/dgraph.v83/algo"
+	"gopkg.in/adibiarsotp/dgraph.v83/client"
+	"gopkg.in/adibiarsotp/dgraph.v83/gql"
+	"gopkg.in/adibiarsotp/dgraph.v83/posting"
+	"gopkg.in/adibiarsotp/dgraph.v83/protos"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/schema"
-	"gopkg.in/adibiarsotp/dgraph.v82/types"
-	"gopkg.in/adibiarsotp/dgraph.v82/worker"
-	"gopkg.in/adibiarsotp/dgraph.v82/x"
+	"gopkg.in/adibiarsotp/dgraph.v83/schema"
+	"gopkg.in/adibiarsotp/dgraph.v83/types"
+	"gopkg.in/adibiarsotp/dgraph.v83/worker"
+	"gopkg.in/adibiarsotp/dgraph.v83/x"
 )
 
 var passwordCache map[string]string = make(map[string]string, 2)

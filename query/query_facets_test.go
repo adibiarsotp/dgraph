@@ -24,9 +24,9 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/require"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/client"
-	"gopkg.in/adibiarsotp/dgraph.v82/types"
-	"gopkg.in/adibiarsotp/dgraph.v82/x"
+	"gopkg.in/adibiarsotp/dgraph.v83/client"
+	"gopkg.in/adibiarsotp/dgraph.v83/types"
+	"gopkg.in/adibiarsotp/dgraph.v83/x"
 )
 
 func populateGraphWithFacets(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/dgraph-io/badger"
-	"gopkg.in/adibiarsotp/dgraph.v82/x"
+	"gopkg.in/adibiarsotp/dgraph.v83/x"
 	farm "github.com/dgryski/go-farm"
 )
 

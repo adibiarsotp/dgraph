@@ -20,9 +20,9 @@ package worker
 import (
 	"golang.org/x/net/context"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/posting"
-	"gopkg.in/adibiarsotp/dgraph.v82/schema"
-	"gopkg.in/adibiarsotp/dgraph.v82/x"
+	"gopkg.in/adibiarsotp/dgraph.v83/posting"
+	"gopkg.in/adibiarsotp/dgraph.v83/schema"
+	"gopkg.in/adibiarsotp/dgraph.v83/x"
 )
 
 func (n *node) rebuildOrDelIndex(ctx context.Context, attr string, rebuild bool) error {

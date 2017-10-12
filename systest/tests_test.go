@@ -297,8 +297,8 @@ func TestCountIndex(t *testing.T) {
 
 func TestGoldenData(t *testing.T) {
 	s := newSuiteFromFile(t,
-		os.ExpandEnv("$GOPATH/src/gopkg.in/adibiarsotp/dgraph.v82/systest/data/goldendata.schema"),
-		os.ExpandEnv("$GOPATH/src/gopkg.in/adibiarsotp/dgraph.v82/systest/data/goldendata.rdf.gz"),
+		os.ExpandEnv("$GOPATH/src/gopkg.in/adibiarsotp/dgraph.v83/systest/data/goldendata.schema"),
+		os.ExpandEnv("$GOPATH/src/gopkg.in/adibiarsotp/dgraph.v83/systest/data/goldendata.rdf.gz"),
 	)
 	defer s.cleanup()
 

@@ -21,7 +21,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/protos"
+	"gopkg.in/adibiarsotp/dgraph.v83/protos"
 )
 
 // inmemoryClient implements protos.DgraphClient (it's equivalent of default grpc client, but for

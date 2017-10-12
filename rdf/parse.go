@@ -27,11 +27,11 @@ import (
 	"strings"
 	"unicode"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/lex"
-	"gopkg.in/adibiarsotp/dgraph.v82/protos"
-	"gopkg.in/adibiarsotp/dgraph.v82/types"
-	"gopkg.in/adibiarsotp/dgraph.v82/types/facets"
-	"gopkg.in/adibiarsotp/dgraph.v82/x"
+	"gopkg.in/adibiarsotp/dgraph.v83/lex"
+	"gopkg.in/adibiarsotp/dgraph.v83/protos"
+	"gopkg.in/adibiarsotp/dgraph.v83/types"
+	"gopkg.in/adibiarsotp/dgraph.v83/types/facets"
+	"gopkg.in/adibiarsotp/dgraph.v83/x"
 )
 
 var (

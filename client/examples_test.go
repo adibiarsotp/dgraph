@@ -27,8 +27,8 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/client"
-	"gopkg.in/adibiarsotp/dgraph.v82/x"
+	"gopkg.in/adibiarsotp/dgraph.v83/client"
+	"gopkg.in/adibiarsotp/dgraph.v83/x"
 	"github.com/gogo/protobuf/proto"
 	"github.com/twpayne/go-geom/encoding/wkb"
 	"google.golang.org/grpc"

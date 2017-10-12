@@ -28,9 +28,9 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger"
-	"gopkg.in/adibiarsotp/dgraph.v82/conn"
-	"gopkg.in/adibiarsotp/dgraph.v82/protos"
-	"gopkg.in/adibiarsotp/dgraph.v82/x"
+	"gopkg.in/adibiarsotp/dgraph.v83/conn"
+	"gopkg.in/adibiarsotp/dgraph.v83/protos"
+	"gopkg.in/adibiarsotp/dgraph.v83/x"
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"

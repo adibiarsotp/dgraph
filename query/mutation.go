@@ -7,11 +7,11 @@ import (
 
 	"golang.org/x/net/trace"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/gql"
-	"gopkg.in/adibiarsotp/dgraph.v82/protos"
-	"gopkg.in/adibiarsotp/dgraph.v82/types/facets"
-	"gopkg.in/adibiarsotp/dgraph.v82/worker"
-	"gopkg.in/adibiarsotp/dgraph.v82/x"
+	"gopkg.in/adibiarsotp/dgraph.v83/gql"
+	"gopkg.in/adibiarsotp/dgraph.v83/protos"
+	"gopkg.in/adibiarsotp/dgraph.v83/types/facets"
+	"gopkg.in/adibiarsotp/dgraph.v83/worker"
+	"gopkg.in/adibiarsotp/dgraph.v83/x"
 )
 
 type InternalMutation struct {

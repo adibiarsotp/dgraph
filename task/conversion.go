@@ -20,7 +20,7 @@ package task
 import (
 	"encoding/binary"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/protos"
+	"gopkg.in/adibiarsotp/dgraph.v83/protos"
 )
 
 var (

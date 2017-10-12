@@ -22,7 +22,7 @@ import (
 	"runtime/debug"
 	"testing"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/protos"
+	"gopkg.in/adibiarsotp/dgraph.v83/protos"
 	"github.com/stretchr/testify/require"
 )
 

@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/x"
+	"gopkg.in/adibiarsotp/dgraph.v83/x"
 	"github.com/stretchr/testify/require"
 	"github.com/twpayne/go-geom"
 	"github.com/twpayne/go-geom/encoding/wkb"

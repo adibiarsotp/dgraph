@@ -25,8 +25,8 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/dgraph-io/badger"
-	"gopkg.in/adibiarsotp/dgraph.v82/protos"
-	"gopkg.in/adibiarsotp/dgraph.v82/x"
+	"gopkg.in/adibiarsotp/dgraph.v83/protos"
+	"gopkg.in/adibiarsotp/dgraph.v83/x"
 )
 
 var (

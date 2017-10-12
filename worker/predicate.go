@@ -26,10 +26,10 @@ import (
 	"github.com/dgraph-io/badger"
 	"golang.org/x/net/trace"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/conn"
-	"gopkg.in/adibiarsotp/dgraph.v82/posting"
-	"gopkg.in/adibiarsotp/dgraph.v82/protos"
-	"gopkg.in/adibiarsotp/dgraph.v82/x"
+	"gopkg.in/adibiarsotp/dgraph.v83/conn"
+	"gopkg.in/adibiarsotp/dgraph.v83/posting"
+	"gopkg.in/adibiarsotp/dgraph.v83/protos"
+	"gopkg.in/adibiarsotp/dgraph.v83/x"
 )
 
 const (

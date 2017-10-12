@@ -5,7 +5,7 @@
 [![Wiki](https://img.shields.io/badge/res-wiki-blue.svg)](https://docs.dgraph.io)
 [![Build Status](https://travis-ci.org/dgraph-io/dgraph.svg?branch=master)](https://travis-ci.org/dgraph-io/dgraph)
 [![Coverage Status](https://coveralls.io/repos/github/dgraph-io/dgraph/badge.svg?branch=master)](https://coveralls.io/github/dgraph-io/dgraph?branch=master)
-[![Go Report Card](https://goreportcard.com/badge/gopkg.in/adibiarsotp/dgraph.v82)](https://goreportcard.com/report/gopkg.in/adibiarsotp/dgraph.v82)
+[![Go Report Card](https://goreportcard.com/badge/gopkg.in/adibiarsotp/dgraph.v83)](https://goreportcard.com/report/gopkg.in/adibiarsotp/dgraph.v83)
 [![Slack Status](http://slack.dgraph.io/badge.svg)](http://slack.dgraph.io)
 
 Dgraph's goal is to provide [Google](https://www.google.com) production level scale and throughput,
@@ -23,7 +23,7 @@ presentation videos on [YouTube channel](https://www.youtube.com/channel/UCghE41
 ## Current Status
 
 Dgraph is [currently at version
-0.8.x](https://gopkg.in/adibiarsotp/dgraph.v82/releases).  We have largely frozen
+0.8.x](https://gopkg.in/adibiarsotp/dgraph.v83/releases).  We have largely frozen
 the feature set at this point, and focusing solely on stability, performance and
 robustness.  We recommend using it in your projects. If you plan to use Dgraph
 for user-facing production environment, [come talk to
@@ -36,20 +36,20 @@ us](mailto:manish@dgraph.io).
   [https://discuss.dgraph.io](https://discuss.dgraph.io).
 - Check out [the demo at dgraph.io](http://dgraph.io) and [the visualization at
   play.dgraph.io](http://play.dgraph.io/).
-- Please see [releases tab](https://gopkg.in/adibiarsotp/dgraph.v82/releases) to
+- Please see [releases tab](https://gopkg.in/adibiarsotp/dgraph.v83/releases) to
   find the latest release and corresponding release notes.
-- [See the Roadmap](https://gopkg.in/adibiarsotp/dgraph.v82/issues/1) for list of
+- [See the Roadmap](https://gopkg.in/adibiarsotp/dgraph.v83/issues/1) for list of
   working and planned features.
 - Read about the latest updates from Dgraph team [on our
   blog](https://open.dgraph.io/).
 
 ## Developers
-- See a list of issues [that we need help with](https://gopkg.in/adibiarsotp/dgraph.v82/issues?q=is%3Aissue+is%3Aopen+label%3Ahelp_wanted).
+- See a list of issues [that we need help with](https://gopkg.in/adibiarsotp/dgraph.v83/issues?q=is%3Aissue+is%3Aopen+label%3Ahelp_wanted).
 - Please see [contributing to Dgraph](https://docs.dgraph.io/contribute/) for guidelines on contributions.
 
 
 ## Contact
 - Please use [discuss.dgraph.io](https://discuss.dgraph.io) for documentation, questions, feature requests and discussions.
-- Please use [Github issue tracker](https://gopkg.in/adibiarsotp/dgraph.v82/issues) for filing bugs or feature requests.
+- Please use [Github issue tracker](https://gopkg.in/adibiarsotp/dgraph.v83/issues) for filing bugs or feature requests.
 - Join [![Slack Status](http://slack.dgraph.io/badge.svg)](http://slack.dgraph.io).
 - Follow us on Twitter [@dgraphlabs](https://twitter.com/dgraphlabs).

@@ -21,7 +21,7 @@ done
 
 tmp=${tmp:-tmp}
 
-go install -race gopkg.in/adibiarsotp/dgraph.v82/cmd/dgraph-bulk-loader
+go install -race gopkg.in/adibiarsotp/dgraph.v83/cmd/dgraph-bulk-loader
 
 function run_test {
 	[[ $# == 2 ]] || { echo "bad args"; exit 1; }

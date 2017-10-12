@@ -21,7 +21,7 @@ import (
 	"sync"
 
 	"github.com/dgraph-io/badger"
-	"gopkg.in/adibiarsotp/dgraph.v82/protos"
+	"gopkg.in/adibiarsotp/dgraph.v83/protos"
 	"github.com/pkg/errors"
 	"golang.org/x/net/context"
 )

@@ -27,7 +27,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/types"
+	"gopkg.in/adibiarsotp/dgraph.v83/types"
 )
 
 func makeFastJsonNode() *fastJsonNode {

@@ -96,7 +96,7 @@ else
 	OS="linux"
 fi
 
-DGRAPH=$GOPATH/src/gopkg.in/adibiarsotp/dgraph.v82
+DGRAPH=$GOPATH/src/gopkg.in/adibiarsotp/dgraph.v83
 BUILD_DIR=$DGRAPH/contrib
 source ${BUILD_DIR}/nightly/github.sh
 
@@ -105,10 +105,10 @@ DGRAPH_VERSION=$(get_version)
 LATEST_TAG=$(git describe --abbrev=0)
 DGRAPH_COMMIT=$(git rev-parse HEAD)
 TAR_FILE="dgraph-${OS}-amd64-${DGRAPH_VERSION}${ASSET_SUFFIX}.tar.gz"
-NIGHTLY_FILE="${GOPATH}/src/gopkg.in/adibiarsotp/dgraph.v82/${TAR_FILE}"
+NIGHTLY_FILE="${GOPATH}/src/gopkg.in/adibiarsotp/dgraph.v83/${TAR_FILE}"
 SHA_FILE_NAME="dgraph-checksum-${OS}-amd64-${DGRAPH_VERSION}${ASSET_SUFFIX}.sha256"
-SHA_FILE="${GOPATH}/src/gopkg.in/adibiarsotp/dgraph.v82/${SHA_FILE_NAME}"
-ASSETS_FILE="${GOPATH}/src/gopkg.in/adibiarsotp/dgraph.v82/assets.tar.gz"
+SHA_FILE="${GOPATH}/src/gopkg.in/adibiarsotp/dgraph.v83/${SHA_FILE_NAME}"
+ASSETS_FILE="${GOPATH}/src/gopkg.in/adibiarsotp/dgraph.v83/assets.tar.gz"
 CURRENT_BRANCH=$TRAVIS_BRANCH
 CURRENT_DIR=$(pwd)
 
@@ -211,7 +211,7 @@ build_docker_image() {
 		return 0
 	fi
 
-	pushd ${GOPATH}/src/gopkg.in/adibiarsotp/dgraph.v82/contrib/nightly > /dev/null
+	pushd ${GOPATH}/src/gopkg.in/adibiarsotp/dgraph.v83/contrib/nightly > /dev/null
 	# Extract dgraph folder from the tar as its required by the Dockerfile.
 	tar -xzf ${NIGHTLY_FILE}
 	cp ${ASSETS_FILE} .

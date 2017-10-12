@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"unicode/utf8"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/x"
+	"gopkg.in/adibiarsotp/dgraph.v83/x"
 )
 
 const EOF = -1

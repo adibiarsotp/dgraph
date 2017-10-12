@@ -23,8 +23,8 @@ import (
 	"log"
 	"os"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/client"
-	"gopkg.in/adibiarsotp/dgraph.v82/x"
+	"gopkg.in/adibiarsotp/dgraph.v83/client"
+	"gopkg.in/adibiarsotp/dgraph.v83/x"
 	"google.golang.org/grpc"
 )
 

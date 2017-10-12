@@ -22,7 +22,7 @@ import (
 	"github.com/golang/geo/s2"
 	"github.com/twpayne/go-geom"
 
-	"gopkg.in/adibiarsotp/dgraph.v82/x"
+	"gopkg.in/adibiarsotp/dgraph.v83/x"
 )
 
 func parentCoverTokens(parents s2.CellUnion, cover s2.CellUnion) []string {
