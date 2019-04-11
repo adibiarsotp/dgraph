@@ -1,17 +1,18 @@
 /*
- * Copyright 2016 DGraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package schema
@@ -21,21 +22,21 @@ import (
 	"os"
 	"testing"
 
+	"github.com/dgraph-io/badger/badger"
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/dgraph/group"
-	"github.com/dgraph-io/dgraph/protos/typesp"
-	"github.com/dgraph-io/dgraph/store"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/group"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 type nameType struct {
 	name string
-	typ  *typesp.Schema
+	typ  *protos.SchemaUpdate
 }
 
-func checkSchema(t *testing.T, h map[string]*typesp.Schema, expected []nameType) {
+func checkSchema(t *testing.T, h map[string]*protos.SchemaUpdate, expected []nameType) {
 	require.Len(t, h, len(expected))
 	for _, nt := range expected {
 		typ, found := h[nt.name]
@@ -45,35 +46,46 @@ func checkSchema(t *testing.T, h map[string]*typesp.Schema, expected []nameType)
 }
 
 var schemaVal = `
-age:int
+age:int .
 
-name: string
- address: string
-<http://scalar.com/helloworld/> : string
+name: string .
+ address: string .
+<http://scalar.com/helloworld/> : string .
 `
 
 func TestSchema(t *testing.T) {
 	require.NoError(t, ParseBytes([]byte(schemaVal), 1))
 	checkSchema(t, State().get(1).predicate, []nameType{
-		{"name", &typesp.Schema{ValueType: uint32(types.StringID)}},
-		{"address", &typesp.Schema{ValueType: uint32(types.StringID)}},
-		{"http://scalar.com/helloworld/", &typesp.Schema{ValueType: uint32(types.StringID)}},
-		{"age", &typesp.Schema{ValueType: uint32(types.Int32ID)}},
+		{"name", &protos.SchemaUpdate{
+			ValueType: uint32(types.StringID),
+		}},
+		{"address", &protos.SchemaUpdate{ValueType: uint32(types.StringID)}},
+		{"http://scalar.com/helloworld/", &protos.SchemaUpdate{
+			ValueType: uint32(types.StringID),
+		}},
+		{"age", &protos.SchemaUpdate{
+			ValueType: uint32(types.IntID),
+		}},
+		{"_xid_", &protos.SchemaUpdate{
+			ValueType: uint32(types.StringID),
+			Tokenizer: []string{"hash"},
+			Directive: protos.SchemaUpdate_INDEX,
+		}},
 	})
 
 	typ, err := State().TypeOf("age")
 	require.NoError(t, err)
-	require.Equal(t, types.Int32ID, typ)
+	require.Equal(t, types.IntID, typ)
 
 	typ, err = State().TypeOf("agea")
 	require.Error(t, err)
 }
 
 var schemaVal1 = `
-age:int
+age:int .
 
-name: string
-address: string
+name: string .
+address: string .
 
 )
 `
@@ -99,23 +111,20 @@ func TestSchema3_Error(t *testing.T) {
 }
 
 var schemaIndexVal1 = `
-age:int @index
+age:int @index .
 
-name: string 
-address: string @index
-`
+name: string .
+address: string @index .`
 
 func TestSchemaIndex(t *testing.T) {
 	require.NoError(t, ParseBytes([]byte(schemaIndexVal1), 1))
-	require.Equal(t, 2, len(State().IndexedFields(1)))
+	require.Equal(t, 3, len(State().IndexedFields(1)))
 }
 
 var schemaIndexVal2 = `
-age:uid @index(int)
-
-name: string @index(exact, exact)
-address: string @index(term)
-id: id @index(exact, term, exact)
+name: string @index(exact, exact) .
+address: string @index(term) .
+id: id @index(exact, term, exact) .
 `
 
 // Duplicate tokenizers
@@ -123,17 +132,27 @@ func TestSchemaIndex_Error1(t *testing.T) {
 	require.Error(t, ParseBytes([]byte(schemaIndexVal2), 1))
 }
 
-var schemaIndexVal3 = `
-person:uid @index
+var schemaIndexVal3Uid = `
+person:uid @index .
+`
+
+var schemaIndexVal3Default = `
+value:default @index .
+`
+
+var schemaIndexVal3Password = `
+pass:password @index .
 `
 
 // Object types cant be indexed.
 func TestSchemaIndex_Error2(t *testing.T) {
-	require.Error(t, ParseBytes([]byte(schemaIndexVal3), 1))
+	require.Error(t, ParseBytes([]byte(schemaIndexVal3Uid), 1))
+	require.Error(t, ParseBytes([]byte(schemaIndexVal3Default), 1))
+	require.Error(t, ParseBytes([]byte(schemaIndexVal3Password), 1))
 }
 
 var schemaIndexVal4 = `
-name:string @index(exact term)
+name:string @index(exact term) .
 `
 
 // Missing comma.
@@ -142,49 +161,52 @@ func TestSchemaIndex_Error3(t *testing.T) {
 }
 
 var schemaIndexVal5 = `
-age:int @index(int)
+age:int @index(int) .
 
-name: string @index(exact)
-address: string @index(term)
-id: id @index(exact, term)
+name: string @index(exact) .
+address: string @index(term) .
+id: id @index(exact, term) .
 `
 
 func TestSchemaIndexCustom(t *testing.T) {
 	require.NoError(t, ParseBytes([]byte(schemaIndexVal5), 1))
 	checkSchema(t, State().get(1).predicate, []nameType{
-		{"name", &typesp.Schema{
+		{"name", &protos.SchemaUpdate{
 			ValueType: uint32(types.StringID),
 			Tokenizer: []string{"exact"},
-			Directive: typesp.Schema_INDEX,
+			Directive: protos.SchemaUpdate_INDEX,
 		}},
-		{"address", &typesp.Schema{
+		{"address", &protos.SchemaUpdate{
 			ValueType: uint32(types.StringID),
 			Tokenizer: []string{"term"},
-			Directive: typesp.Schema_INDEX,
+			Directive: protos.SchemaUpdate_INDEX,
 		}},
-		{"age", &typesp.Schema{
-			ValueType: uint32(types.Int32ID),
+		{"age", &protos.SchemaUpdate{
+			ValueType: uint32(types.IntID),
 			Tokenizer: []string{"int"},
-			Directive: typesp.Schema_INDEX,
+			Directive: protos.SchemaUpdate_INDEX,
 		}},
-		{"id", &typesp.Schema{
+		{"id", &protos.SchemaUpdate{
 			ValueType: uint32(types.StringID),
 			Tokenizer: []string{"exact", "term"},
-			Directive: typesp.Schema_INDEX,
+			Directive: protos.SchemaUpdate_INDEX,
+		}},
+		{"_xid_", &protos.SchemaUpdate{
+			ValueType: uint32(types.StringID),
+			Tokenizer: []string{"hash"},
+			Directive: protos.SchemaUpdate_INDEX,
 		}},
 	})
 	require.True(t, State().IsIndexed("name"))
 	require.False(t, State().IsReversed("name"))
 	require.Equal(t, "int", State().Tokenizer("age")[0].Name())
-	require.Equal(t, 4, len(State().IndexedFields(1)))
+	require.Equal(t, 5, len(State().IndexedFields(1)))
 }
 
 func TestParse(t *testing.T) {
 	reset()
-	schemas, err := Parse("age:int @index name:string")
-	require.NoError(t, err)
-	require.Equal(t, "int", schemas[0].Tokenizer[0])
-	require.Equal(t, 2, len(schemas))
+	_, err := Parse("age:int @index . name:string")
+	require.Error(t, err)
 }
 
 func TestParse2(t *testing.T) {
@@ -196,12 +218,41 @@ func TestParse2(t *testing.T) {
 
 func TestParse3_Error(t *testing.T) {
 	reset()
-	schemas, err := Parse("age:uid @index")
+	schemas, err := Parse("age:uid @index .")
 	require.Error(t, err)
 	require.Nil(t, schemas)
 }
 
-var ps *store.Store
+func TestParse4_Error(t *testing.T) {
+	reset()
+	schemas, err := Parse("alive:bool @index(geo) .")
+	require.Equal(t, "Tokenizer: geo isn't valid for predicate: alive of type: bool",
+		err.Error())
+	require.Nil(t, schemas)
+}
+
+func TestParse4_NoError(t *testing.T) {
+	reset()
+	schemas, err := Parse("name:string @index(fulltext) .")
+	require.NotNil(t, schemas)
+	require.Nil(t, err)
+}
+
+func TestParse5_Error(t *testing.T) {
+	reset()
+	schemas, err := Parse("value:default @index .")
+	require.Error(t, err)
+	require.Nil(t, schemas)
+}
+
+func TestParse6_Error(t *testing.T) {
+	reset()
+	schemas, err := Parse("pass:password @index .")
+	require.Error(t, err)
+	require.Nil(t, schemas)
+}
+
+var ps *badger.KV
 
 func TestMain(m *testing.M) {
 	x.SetTestRun()
@@ -209,7 +260,9 @@ func TestMain(m *testing.M) {
 
 	dir, err := ioutil.TempDir("", "storetest_")
 	x.Check(err)
-	ps, err = store.NewStore(dir)
+	kvOpt := badger.DefaultOptions
+	kvOpt.Dir = dir
+	ps, err = badger.NewKV(&kvOpt)
 	x.Check(err)
 	x.Check(group.ParseGroupConfig("groups.conf"))
 	Init(ps)
@@ -217,4 +270,10 @@ func TestMain(m *testing.M) {
 	defer ps.Close()
 
 	os.Exit(m.Run())
+}
+
+func TestParseUnderscore(t *testing.T) {
+	reset()
+	_, err := Parse("_share_:string @index .")
+	require.NoError(t, err)
 }

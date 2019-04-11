@@ -1,38 +1,40 @@
 /*
- * Copyright 2016 DGraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package schema
 
 import (
+	"bytes"
 	"fmt"
 	"time"
 
+	"github.com/dgraph-io/badger/badger"
 	"golang.org/x/net/trace"
 
-	"github.com/dgraph-io/dgraph/group"
-	"github.com/dgraph-io/dgraph/protos/typesp"
-	"github.com/dgraph-io/dgraph/store"
-	"github.com/dgraph-io/dgraph/tok"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/group"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/tok"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 var (
 	pstate *state
-	pstore *store.Store
+	pstore *badger.KV
 	syncCh chan SyncEntry
 )
 
@@ -40,12 +42,12 @@ type stateGroup struct {
 	// Can have fine grained locking later if necessary, per group or predicate
 	x.SafeMutex
 	// Map containing predicate to type information.
-	predicate map[string]*typesp.Schema
+	predicate map[string]*protos.SchemaUpdate
 	elog      trace.EventLog
 }
 
 func (s *stateGroup) init(group uint32) {
-	s.predicate = make(map[string]*typesp.Schema)
+	s.predicate = make(map[string]*protos.SchemaUpdate)
 	s.elog = trace.NewEventLog("Dynamic Schema", fmt.Sprintf("%d", group))
 }
 
@@ -99,35 +101,38 @@ func (s *stateGroup) update(se SyncEntry) {
 	s.predicate[se.Attr] = &se.Schema
 	se.Water.Ch <- x.Mark{Index: se.Index, Done: false}
 	syncCh <- se
-	s.elog.Printf("Setting schema for attr %s: %v\n", se.Attr, se.Schema)
-	fmt.Printf("Setting schema for attr %s: %v\n", se.Attr, se.Schema)
+	s.elog.Printf("Setting schema type for attr %s: %v, tokenizer: %v, directive: %v\n", se.Attr,
+		types.TypeID(se.Schema.ValueType).Name(), se.Schema.Tokenizer, se.Schema.Directive)
+	fmt.Printf("Setting schema type for attr %s: %v, tokenizer: %v, directive: %v\n", se.Attr,
+		types.TypeID(se.Schema.ValueType).Name(), se.Schema.Tokenizer, se.Schema.Directive)
 }
 
 // Set sets the schema for given predicate in memory
 // schema mutations must flow through update function, which are
 // synced to db
-func (s *state) Set(pred string, schema typesp.Schema) {
+func (s *state) Set(pred string, schema protos.SchemaUpdate) {
 	s.get(group.BelongsTo(pred)).set(pred, schema)
 }
 
-func (s *stateGroup) set(pred string, schema typesp.Schema) {
+func (s *stateGroup) set(pred string, schema protos.SchemaUpdate) {
 	s.Lock()
 	defer s.Unlock()
 	s.predicate[pred] = &schema
-	s.elog.Printf("Setting schema for attr %s: %v\n", pred, schema.ValueType)
+	s.elog.Printf("Setting schema type for attr %s: %v, tokenizer: %v, directive: %v\n", pred,
+		types.TypeID(schema.ValueType).Name(), schema.Tokenizer, schema.Directive)
 }
 
 // Get gets the schema for given predicate
-func (s *state) Get(pred string) (typesp.Schema, bool) {
+func (s *state) Get(pred string) (protos.SchemaUpdate, bool) {
 	return s.get(group.BelongsTo(pred)).get(pred)
 }
 
-func (s *stateGroup) get(pred string) (typesp.Schema, bool) {
+func (s *stateGroup) get(pred string) (protos.SchemaUpdate, bool) {
 	s.Lock()
 	defer s.Unlock()
 	schema, has := s.predicate[pred]
 	if !has {
-		return typesp.Schema{}, false
+		return protos.SchemaUpdate{}, false
 	}
 	return *schema, true
 }
@@ -143,7 +148,7 @@ func (s *stateGroup) typeOf(pred string) (types.TypeID, error) {
 	if schema, ok := s.predicate[pred]; ok {
 		return types.TypeID(schema.ValueType), nil
 	}
-	return types.TypeID(100), x.Errorf("Undefined predicate")
+	return types.TypeID(100), x.Errorf("Undefined predicate: %v.", pred)
 }
 
 // IsIndexed returns whether the predicate is indexed or not
@@ -239,12 +244,12 @@ func (s *stateGroup) isReversed(pred string) bool {
 	s.RLock()
 	defer s.RUnlock()
 	if schema, ok := s.predicate[pred]; ok {
-		return schema.Directive == typesp.Schema_REVERSE
+		return schema.Directive == protos.SchemaUpdate_REVERSE
 	}
 	return false
 }
 
-func Init(ps *store.Store) {
+func Init(ps *badger.KV) {
 	pstore = ps
 	syncCh = make(chan SyncEntry, 10000)
 	reset()
@@ -252,44 +257,33 @@ func Init(ps *store.Store) {
 }
 
 // LoadFromDb reads schema information from db and stores it in memory
-// This is used on server start to load schema for all groups, avoid repeated
-// query to disk if we have large number of groups
 func LoadFromDb(gid uint32) error {
 	prefix := x.SchemaPrefix()
-	itr := pstore.NewIterator()
+	itr := pstore.NewIterator(badger.DefaultIteratorOptions) // Need values, reversed=false.
 	defer itr.Close()
 
-	for itr.Seek(prefix); itr.ValidForPrefix(prefix); itr.Next() {
-		key := itr.Key().Data()
+	for itr.Seek(prefix); itr.Valid(); itr.Next() {
+		item := itr.Item()
+		key := item.Key()
+		if !bytes.HasPrefix(key, prefix) {
+			break
+		}
 		attr := x.Parse(key).Attr
-		data := itr.Value().Data()
-		var s typesp.Schema
-		x.Checkf(s.Unmarshal(data), "Error while loading schema from db")
+		var s protos.SchemaUpdate
+		x.Checkf(s.Unmarshal(item.Value()), "Error while loading schema from db")
 		if group.BelongsTo(attr) != gid {
 			continue
 		}
 		State().Set(attr, s)
 	}
-	return nil
-}
-
-func Refresh(groupId uint32) error {
-	prefix := x.SchemaPrefix()
-	itr := pstore.NewIterator()
-	defer itr.Close()
-
-	for itr.Seek(prefix); itr.ValidForPrefix(prefix); itr.Next() {
-		key := itr.Key().Data()
-		attr := x.Parse(key).Attr
-		if group.BelongsTo(attr) != groupId {
-			continue
-		}
-		data := itr.Value().Data()
-		var s typesp.Schema
-		x.Checkf(s.Unmarshal(data), "Error while loading schema from db")
-		State().Set(attr, s)
+	if group.BelongsTo("_xid_") != gid {
+		return nil
 	}
-
+	State().Set("_xid_", protos.SchemaUpdate{
+		ValueType: uint32(types.StringID),
+		Directive: protos.SchemaUpdate_INDEX,
+		Tokenizer: []string{"hash"},
+	})
 	return nil
 }
 
@@ -301,7 +295,7 @@ func reset() {
 // SyncEntry stores the schema mutation information
 type SyncEntry struct {
 	Attr   string
-	Schema typesp.Schema
+	Schema protos.SchemaUpdate
 	Water  *x.WaterMark
 	Index  uint64
 }
@@ -317,10 +311,7 @@ func addToEntriesMap(entriesMap map[chan x.Mark][]uint64, entries []SyncEntry) {
 func batchSync() {
 	var entries []SyncEntry
 	var loop uint64
-
-	b := pstore.NewWriteBatch()
-	defer b.Destroy()
-
+	wb := make([]*badger.Entry, 0, 100)
 	for {
 		select {
 		case e := <-syncCh:
@@ -330,16 +321,15 @@ func batchSync() {
 			// default is executed if no other case is ready.
 			start := time.Now()
 			if len(entries) > 0 {
-				x.AssertTrue(b != nil)
 				loop++
 				State().elog.Printf("[%4d] Writing schema batch of size: %v\n", loop, len(entries))
 				for _, e := range entries {
 					val, err := e.Schema.Marshal()
 					x.Checkf(err, "Error while marshalling schema description")
-					b.Put(x.SchemaKey(e.Attr), val)
+					wb = badger.EntriesSet(wb, x.SchemaKey(e.Attr), val)
 				}
-				x.Checkf(pstore.WriteBatch(b), "Error while writing to RocksDB.")
-				b.Clear()
+				pstore.BatchSet(wb)
+				wb = wb[:0]
 
 				entriesMap := make(map[chan x.Mark][]uint64)
 				addToEntriesMap(entriesMap, entries)

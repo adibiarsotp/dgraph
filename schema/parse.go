@@ -1,49 +1,52 @@
 /*
- * Copyright 2016 DGraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package schema
 
 import (
-	"github.com/dgraph-io/dgraph/lex"
-	"github.com/dgraph-io/dgraph/protos/graphp"
-	"github.com/dgraph-io/dgraph/protos/typesp"
-	"github.com/dgraph-io/dgraph/tok"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/lex"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/tok"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
-func From(s *graphp.SchemaUpdate) typesp.Schema {
-	if s.Directive == graphp.SchemaUpdate_REVERSE {
-		return typesp.Schema{
+func From(s *protos.SchemaUpdate) protos.SchemaUpdate {
+	if s.Directive == protos.SchemaUpdate_REVERSE {
+		return protos.SchemaUpdate{
 			ValueType: s.ValueType,
-			Directive: typesp.Schema_REVERSE}
-	} else if s.Directive == graphp.SchemaUpdate_INDEX {
-		return typesp.Schema{
+			Directive: protos.SchemaUpdate_REVERSE}
+	} else if s.Directive == protos.SchemaUpdate_INDEX {
+		return protos.SchemaUpdate{
 			ValueType: s.ValueType,
-			Directive: typesp.Schema_INDEX,
+			Directive: protos.SchemaUpdate_INDEX,
 			Tokenizer: s.Tokenizer}
 	}
-	return typesp.Schema{ValueType: s.ValueType}
+	return protos.SchemaUpdate{ValueType: s.ValueType}
 }
 
 // ParseBytes parses the byte array which holds the schema. We will reset
 // all the globals.
 // Overwrites schema blindly - called only during initilization in testing
 func ParseBytes(s []byte, gid uint32) (rerr error) {
-	reset()
+	if pstate == nil {
+		reset()
+	}
+	pstate.m = make(map[uint32]*stateGroup)
 	updates, err := Parse(string(s))
 	if err != nil {
 		return err
@@ -52,11 +55,16 @@ func ParseBytes(s []byte, gid uint32) (rerr error) {
 	for _, update := range updates {
 		State().Set(update.Predicate, From(update))
 	}
+	State().Set("_xid_", protos.SchemaUpdate{
+		ValueType: uint32(types.StringID),
+		Directive: protos.SchemaUpdate_INDEX,
+		Tokenizer: []string{"hash"},
+	})
 	return nil
 }
 
-func parseScalarPair(it *lex.ItemIterator, predicate string,
-	allowIndex bool) (*graphp.SchemaUpdate, error) {
+func parseScalarPair(it *lex.ItemIterator, predicate string) (*protos.SchemaUpdate,
+	error) {
 	it.Next()
 	if next := it.Item(); next.Typ != itemColon {
 		return nil, x.Errorf("Missing colon")
@@ -74,48 +82,47 @@ func parseScalarPair(it *lex.ItemIterator, predicate string,
 	}
 
 	// Check for index / reverse.
-	for it.Next() {
+	schema := &protos.SchemaUpdate{Predicate: predicate, ValueType: uint32(t)}
+	it.Next()
+	next = it.Item()
+	if next.Typ == itemAt {
+		it.Next()
 		next = it.Item()
-		if next.Typ == lex.ItemError {
-			return nil, x.Errorf(next.Val)
+		if next.Typ != itemText {
+			return nil, x.Errorf("Missing directive name")
 		}
-		if next.Typ == itemAt {
-			it.Next()
-			next = it.Item()
-			if next.Typ != itemText {
-				return nil, x.Errorf("Missing directive name")
+		switch next.Val {
+		case "reverse":
+			if t != types.UidID {
+				return nil, x.Errorf("Cannot reverse for non-UID type")
 			}
-			switch next.Val {
-			case "reverse":
-				if t != types.UidID {
-					return nil, x.Errorf("Cannot reverse for non-UID type")
-				}
-				return &graphp.SchemaUpdate{
-					Predicate: predicate,
-					ValueType: uint32(t),
-					Directive: graphp.SchemaUpdate_REVERSE,
-				}, nil
-			case "index":
-				if !allowIndex {
-					return nil, x.Errorf("@index not allowed")
-				}
-				if tokenizer, err := parseIndexDirective(it, predicate, t); err != nil {
-					return nil, err
-				} else {
-					return &graphp.SchemaUpdate{
-						Predicate: predicate, ValueType: uint32(t),
-						Directive: graphp.SchemaUpdate_INDEX,
-						Tokenizer: tokenizer,
-					}, nil
-				}
-			default:
-				return nil, x.Errorf("Invalid index specification")
+			schema.Directive = protos.SchemaUpdate_REVERSE
+		case "index":
+			if tokenizer, err := parseIndexDirective(it, predicate, t); err != nil {
+				return nil, err
+			} else {
+				schema.Directive = protos.SchemaUpdate_INDEX
+				schema.Tokenizer = tokenizer
 			}
+		default:
+			return nil, x.Errorf("Invalid index specification")
 		}
-		it.Prev()
-		break
+		it.Next()
+		next = it.Item()
 	}
-	return &graphp.SchemaUpdate{Predicate: predicate, ValueType: uint32(t)}, nil
+	if next.Typ != itemDot {
+		return nil, x.Errorf("Invalid ending")
+	}
+	it.Next()
+	next = it.Item()
+	if next.Typ == lex.ItemEOF {
+		it.Prev()
+		return schema, nil
+	}
+	if next.Typ != itemNewLine {
+		return nil, x.Errorf("Invalid ending")
+	}
+	return schema, nil
 }
 
 // parseIndexDirective works on "@index" or "@index(customtokenizer)".
@@ -123,9 +130,11 @@ func parseIndexDirective(it *lex.ItemIterator, predicate string,
 	typ types.TypeID) ([]string, error) {
 	var tokenizers []string
 	var seen = make(map[string]bool)
+	var seenSortableTok bool
 
-	if typ == types.UidID {
-		return tokenizers, x.Errorf("Indexing not allowed on predicate %s of type uid", predicate)
+	if typ == types.UidID || typ == types.DefaultID || typ == types.PasswordID {
+		return tokenizers, x.Errorf("Indexing not allowed on predicate %s of type %s",
+			predicate, typ.Name())
 	}
 	if !it.Next() {
 		// Nothing to read.
@@ -163,20 +172,32 @@ func parseIndexDirective(it *lex.ItemIterator, predicate string,
 		if !has {
 			return tokenizers, x.Errorf("Invalid tokenizer %s", next.Val)
 		}
-		if _, found := seen[tokenizer.Name()]; found {
-			return tokenizers, x.Errorf("Duplicate tokenizers defined for pred %v", predicate)
-		} else {
-			tokenizers = append(tokenizers, tokenizer.Name())
-			seen[tokenizer.Name()] = true
+		if tokenizer.Type() != typ {
+			return tokenizers,
+				x.Errorf("Tokenizer: %s isn't valid for predicate: %s of type: %s",
+					tokenizer.Name(), predicate, typ.Name())
 		}
+		if _, found := seen[tokenizer.Name()]; found {
+			return tokenizers, x.Errorf("Duplicate tokenizers defined for pred %v",
+				predicate)
+		}
+		if tokenizer.IsSortable() {
+			if seenSortableTok {
+				return nil, x.Errorf("More than one sortable index encountered for: %v",
+					predicate)
+			}
+			seenSortableTok = true
+		}
+		tokenizers = append(tokenizers, tokenizer.Name())
+		seen[tokenizer.Name()] = true
 		expectArg = false
 	}
 	return tokenizers, nil
 }
 
 // Parse parses a schema string and returns the schema representation for it.
-func Parse(s string) ([]*graphp.SchemaUpdate, error) {
-	var schemas []*graphp.SchemaUpdate
+func Parse(s string) ([]*protos.SchemaUpdate, error) {
+	var schemas []*protos.SchemaUpdate
 	l := lex.NewLexer(s).Run(lexText)
 	it := l.NewIterator()
 	for it.Next() {
@@ -185,13 +206,15 @@ func Parse(s string) ([]*graphp.SchemaUpdate, error) {
 		case lex.ItemEOF:
 			return schemas, nil
 		case itemText:
-			if schema, err := parseScalarPair(it, item.Val, true); err != nil {
+			if schema, err := parseScalarPair(it, item.Val); err != nil {
 				return nil, err
 			} else {
 				schemas = append(schemas, schema)
 			}
 		case lex.ItemError:
 			return nil, x.Errorf(item.Val)
+		case itemNewLine:
+			// pass empty line
 		default:
 			return nil, x.Errorf("Unexpected token: %v", item)
 		}

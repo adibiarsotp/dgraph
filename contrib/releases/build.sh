@@ -3,14 +3,18 @@
 # This script is used to compile and tar gzip the release binaries so that they
 # can be uploaded to Github. It would typically only be used by Dgraph developers
 # while doing a new release. If you are looking to build Dgraph, you should run a
-# go build from inside $GOPATH/src/github.com/dgraph-io/dgraph/cmd/dgraph
+# go build from inside $GOPATH/src/github.com/adibiarsotp/dgraph/cmd/dgraph
 
 # Exit script in case an error is encountered.
 set -e
 
+asset_suffix=$1
 cur_dir=$(pwd);
 tmp_dir=/tmp/dgraph-build;
 release_version=$(git describe --abbrev=0);
+if [[ -n $asset_suffix ]]; then
+  release_version="$release_version${asset_suffix}"
+fi
 platform="$(uname | tr '[:upper:]' '[:lower:]')"
 checksum_file=$cur_dir/"dgraph-checksum-$platform-amd64-$release_version".sha256
 if [ -f "$checksum_file" ]; then
@@ -32,22 +36,24 @@ mkdir $tmp_dir;
 lastCommitSHA1=$(git rev-parse --short HEAD);
 gitBranch=$(git rev-parse --abbrev-ref HEAD)
 lastCommitTime=$(git log -1 --format=%ci)
-dgraph_cmd=$GOPATH/src/github.com/dgraph-io/dgraph/cmd;
+dgraph_cmd=$GOPATH/src/github.com/adibiarsotp/dgraph/cmd;
+ui="/usr/local/share/dgraph/assets"
 
-release="github.com/dgraph-io/dgraph/x.dgraphVersion"
-branch="github.com/dgraph-io/dgraph/x.gitBranch"
-commitSHA1="github.com/dgraph-io/dgraph/x.lastCommitSHA"
-commitTime="github.com/dgraph-io/dgraph/x.lastCommitTime"
+release="github.com/adibiarsotp/dgraph/x.dgraphVersion"
+branch="github.com/adibiarsotp/dgraph/x.gitBranch"
+commitSHA1="github.com/adibiarsotp/dgraph/x.lastCommitSHA"
+commitTime="github.com/adibiarsotp/dgraph/x.lastCommitTime"
+uiDir="main.uiDir"
 
 echo -e "\033[1;33mBuilding binaries\033[0m"
 echo "dgraph"
 cd $dgraph_cmd/dgraph && \
-   go build -v -tags=embed -ldflags \
-   "-X $release=$release_version -X $branch=$gitBranch -X $commitSHA1=$lastCommitSHA1 -X '$commitTime=$lastCommitTime'" .;
+   go build -v -ldflags \
+   "-X $release=$release_version -X $branch=$gitBranch -X $commitSHA1=$lastCommitSHA1 -X '$commitTime=$lastCommitTime' -X $uiDir=$ui" .;
 echo "dgraphloader"
 echo $release
 cd $dgraph_cmd/dgraphloader && \
-   go build -v -tags=embed -ldflags \
+   go build -v -ldflags \
    "-X $release=$release_version -X $branch=$gitBranch -X $commitSHA1=$lastCommitSHA1 -X '$commitTime=$lastCommitTime'" .;
 
 echo -e "\n\033[1;33mCopying binaries to tmp folder\033[0m"
@@ -56,12 +62,8 @@ mkdir dgraph && pushd &> /dev/null dgraph;
 cp $dgraph_cmd/dgraph/dgraph $dgraph_cmd/dgraphloader/dgraphloader .;
 
 # Stripping the binaries.
-# Stripping binaries on Mac doesn't lead to much reduction in size and
-# instead gives an error.
-if [ "$platform" = "linux" ]; then
-  strip dgraph dgraphloader
-  echo -e "\n\033[1;34mSize of files after strip: $(du -sh)\033[0m"
-fi
+strip dgraph dgraphloader
+echo -e "\n\033[1;34mSize of files after strip: $(du -sh)\033[0m"
 
 digest_cmd=""
 if hash shasum 2>/dev/null; then
@@ -80,7 +82,7 @@ echo -e "\n\033[1;33mCreating tar file\033[0m"
 tar_file=dgraph-"$platform"-amd64-$release_version
 popd &> /dev/null
 # Create a tar file with the contents of the dgraph folder (i.e the binaries)
-tar -zcf $tar_file.tar.gz dgraph;
+GZIP=-n tar -zcf $tar_file.tar.gz dgraph;
 echo -e "\n\033[1;34mSize of tar file: $(du -sh $tar_file.tar.gz)\033[0m"
 
 echo -e "\n\033[1;33mMoving tarfile to original directory\033[0m"
@@ -89,6 +91,6 @@ rm -rf $tmp_dir
 
 echo -e "Calculating and storing checksum for tar gzipped assets."
 cd $cur_dir
-tar -zcf assets.tar.gz -C $GOPATH/src/github.com/dgraph-io/dgraph/dashboard/build .
+GZIP=-n tar -zcf assets.tar.gz -C $GOPATH/src/github.com/adibiarsotp/dgraph/dashboard/build .
 checksum=$($digest_cmd assets.tar.gz | awk '{print $1}')
 echo "$checksum /usr/local/share/dgraph/assets.tar.gz" >> $checksum_file

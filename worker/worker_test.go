@@ -1,17 +1,18 @@
 /*
- * Copyright 2016 DGraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package worker
@@ -24,28 +25,28 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dgraph-io/badger/badger"
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/dgraph/algo"
-	"github.com/dgraph-io/dgraph/posting"
-	"github.com/dgraph-io/dgraph/protos/taskp"
-	"github.com/dgraph-io/dgraph/schema"
-	"github.com/dgraph-io/dgraph/store"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/algo"
+	"github.com/adibiarsotp/dgraph/posting"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/schema"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 var raftIndex uint64
 
-func addEdge(t *testing.T, edge *taskp.DirectedEdge, l *posting.List) {
-	edge.Op = taskp.DirectedEdge_SET
+func addEdge(t *testing.T, edge *protos.DirectedEdge, l *posting.List) {
+	edge.Op = protos.DirectedEdge_SET
 	raftIndex++
 	rv := x.RaftValue{Group: 1, Index: raftIndex}
 	ctx := context.WithValue(context.Background(), "raft", rv)
 	require.NoError(t, l.AddMutationWithIndex(ctx, edge))
 }
 
-func delEdge(t *testing.T, edge *taskp.DirectedEdge, l *posting.List) {
-	edge.Op = taskp.DirectedEdge_DEL
+func delEdge(t *testing.T, edge *protos.DirectedEdge, l *posting.List) {
+	edge.Op = protos.DirectedEdge_DEL
 	raftIndex++
 	rv := x.RaftValue{Group: 1, Index: raftIndex}
 	ctx := context.WithValue(context.Background(), "raft", rv)
@@ -59,7 +60,7 @@ func getOrCreate(key []byte) *posting.List {
 
 func populateGraph(t *testing.T) {
 	// Add uid edges : predicate neightbour.
-	edge := &taskp.DirectedEdge{
+	edge := &protos.DirectedEdge{
 		ValueId: 23,
 		Label:   "author0",
 		Attr:    "neighbour",
@@ -97,7 +98,7 @@ func populateGraph(t *testing.T) {
 	addEdge(t, edge, getOrCreate(x.DataKey("friend", 10)))
 }
 
-func taskValues(t *testing.T, v []*taskp.Value) []string {
+func taskValues(t *testing.T, v []*protos.TaskValue) []string {
 	out := make([]string, len(v))
 	for i, tv := range v {
 		out[i] = string(tv.Val)
@@ -105,14 +106,16 @@ func taskValues(t *testing.T, v []*taskp.Value) []string {
 	return out
 }
 
-func initTest(t *testing.T, schemaStr string) (string, *store.Store) {
+func initTest(t *testing.T, schemaStr string) (string, *badger.KV) {
 	schema.ParseBytes([]byte(schemaStr), 1)
 
 	dir, err := ioutil.TempDir("", "storetest_")
 	require.NoError(t, err)
 
-	ps, err := store.NewStore(dir)
-	require.NoError(t, err)
+	opt := badger.DefaultOptions
+	opt.Dir = dir
+	ps, err := badger.NewKV(&opt)
+	x.Check(err)
 
 	posting.Init(ps)
 	populateGraph(t)
@@ -122,13 +125,13 @@ func initTest(t *testing.T, schemaStr string) (string, *store.Store) {
 }
 
 func TestProcessTask(t *testing.T) {
-	dir, ps := initTest(t, `friend:string @index`)
+	dir, ps := initTest(t, `friend:string @index .`)
 	defer os.RemoveAll(dir)
 	defer ps.Close()
 	defer waitForSyncMark(context.Background(), 1, math.MaxUint64)
 
 	query := newQuery("neighbour", []uint64{10, 11, 12}, nil)
-	r, err := processTask(query, 1)
+	r, err := processTask(context.Background(), query, 1)
 	require.NoError(t, err)
 	require.EqualValues(t,
 		[][]uint64{
@@ -139,10 +142,10 @@ func TestProcessTask(t *testing.T) {
 }
 
 // newQuery creates a Query task and returns it.
-func newQuery(attr string, uids []uint64, srcFunc []string) *taskp.Query {
+func newQuery(attr string, uids []uint64, srcFunc []string) *protos.Query {
 	x.AssertTrue(uids == nil || srcFunc == nil)
-	return &taskp.Query{
-		UidList: &taskp.List{uids},
+	return &protos.Query{
+		UidList: &protos.List{uids},
 		SrcFunc: srcFunc,
 		Attr:    attr,
 	}
@@ -152,13 +155,13 @@ func newQuery(attr string, uids []uint64, srcFunc []string) *taskp.Query {
 // at the end. In other words, everything is happening only in mutation layers,
 // and not committed to RocksDB until near the end.
 func TestProcessTaskIndexMLayer(t *testing.T) {
-	dir, ps := initTest(t, `friend:string @index`)
+	dir, ps := initTest(t, `friend:string @index .`)
 	defer os.RemoveAll(dir)
 	defer ps.Close()
 	defer waitForSyncMark(context.Background(), 1, math.MaxUint64)
 
-	query := newQuery("friend", nil, []string{"anyofterms", "hey photon"})
-	r, err := processTask(query, 1)
+	query := newQuery("friend", nil, []string{"anyofterms", "", "hey photon"})
+	r, err := processTask(context.Background(), query, 1)
 	require.NoError(t, err)
 
 	require.EqualValues(t, [][]uint64{
@@ -168,7 +171,7 @@ func TestProcessTaskIndexMLayer(t *testing.T) {
 
 	// Now try changing 12's friend value from "photon" to "notphotonExtra" to
 	// "notphoton".
-	edge := &taskp.DirectedEdge{
+	edge := &protos.DirectedEdge{
 		Value:  []byte("notphotonExtra"),
 		Label:  "author0",
 		Attr:   "friend",
@@ -180,8 +183,8 @@ func TestProcessTaskIndexMLayer(t *testing.T) {
 	time.Sleep(200 * time.Millisecond) // Let the index process jobs from channel.
 
 	// Issue a similar query.
-	query = newQuery("friend", nil, []string{"anyofterms", "hey photon notphoton notphotonExtra"})
-	r, err = processTask(query, 1)
+	query = newQuery("friend", nil, []string{"anyofterms", "", "hey photon notphoton notphotonExtra"})
+	r, err = processTask(context.Background(), query, 1)
 	require.NoError(t, err)
 
 	require.EqualValues(t, [][]uint64{
@@ -192,7 +195,7 @@ func TestProcessTaskIndexMLayer(t *testing.T) {
 	}, algo.ToUintsListForTest(r.UidMatrix))
 
 	// Try deleting.
-	edge = &taskp.DirectedEdge{
+	edge = &protos.DirectedEdge{
 		Value:  []byte("photon"),
 		Label:  "author0",
 		Attr:   "friend",
@@ -211,8 +214,8 @@ func TestProcessTaskIndexMLayer(t *testing.T) {
 	time.Sleep(200 * time.Millisecond) // Let the index process jobs from channel.
 
 	// Issue a similar query.
-	query = newQuery("friend", nil, []string{"anyofterms", "photon notphoton ignored"})
-	r, err = processTask(query, 1)
+	query = newQuery("friend", nil, []string{"anyofterms", "", "photon notphoton ignored"})
+	r, err = processTask(context.Background(), query, 1)
 	require.NoError(t, err)
 
 	require.EqualValues(t, [][]uint64{
@@ -225,8 +228,8 @@ func TestProcessTaskIndexMLayer(t *testing.T) {
 	posting.CommitLists(10, 1)
 	time.Sleep(200 * time.Millisecond) // Let the index process jobs from channel.
 
-	query = newQuery("friend", nil, []string{"anyofterms", "photon notphoton ignored"})
-	r, err = processTask(query, 1)
+	query = newQuery("friend", nil, []string{"anyofterms", "", "photon notphoton ignored"})
+	r, err = processTask(context.Background(), query, 1)
 	require.NoError(t, err)
 
 	require.EqualValues(t, [][]uint64{
@@ -239,13 +242,13 @@ func TestProcessTaskIndexMLayer(t *testing.T) {
 // Index-related test. Similar to TestProcessTaskIndeMLayer except we call
 // MergeLists in between a lot of updates.
 func TestProcessTaskIndex(t *testing.T) {
-	dir, ps := initTest(t, `friend:string @index`)
+	dir, ps := initTest(t, `friend:string @index .`)
 	defer os.RemoveAll(dir)
 	defer ps.Close()
 	defer waitForSyncMark(context.Background(), 1, math.MaxUint64)
 
-	query := newQuery("friend", nil, []string{"anyofterms", "hey photon"})
-	r, err := processTask(query, 1)
+	query := newQuery("friend", nil, []string{"anyofterms", "", "hey photon"})
+	r, err := processTask(context.Background(), query, 1)
 	require.NoError(t, err)
 
 	require.EqualValues(t, [][]uint64{
@@ -258,7 +261,7 @@ func TestProcessTaskIndex(t *testing.T) {
 
 	// Now try changing 12's friend value from "photon" to "notphotonExtra" to
 	// "notphoton".
-	edge := &taskp.DirectedEdge{
+	edge := &protos.DirectedEdge{
 		Value:  []byte("notphotonExtra"),
 		Label:  "author0",
 		Attr:   "friend",
@@ -270,8 +273,8 @@ func TestProcessTaskIndex(t *testing.T) {
 	time.Sleep(200 * time.Millisecond) // Let the index process jobs from channel.
 
 	// Issue a similar query.
-	query = newQuery("friend", nil, []string{"anyofterms", "hey photon notphoton notphotonExtra"})
-	r, err = processTask(query, 1)
+	query = newQuery("friend", nil, []string{"anyofterms", "", "hey photon notphoton notphotonExtra"})
+	r, err = processTask(context.Background(), query, 1)
 	require.NoError(t, err)
 
 	require.EqualValues(t, [][]uint64{
@@ -285,7 +288,7 @@ func TestProcessTaskIndex(t *testing.T) {
 	time.Sleep(200 * time.Millisecond) // Let the index process jobs from channel.
 
 	// Try deleting.
-	edge = &taskp.DirectedEdge{
+	edge = &protos.DirectedEdge{
 		Value:  []byte("photon"),
 		Label:  "author0",
 		Attr:   "friend",
@@ -304,8 +307,8 @@ func TestProcessTaskIndex(t *testing.T) {
 	time.Sleep(200 * time.Millisecond) // Let indexing finish.
 
 	// Issue a similar query.
-	query = newQuery("friend", nil, []string{"anyofterms", "photon notphoton ignored"})
-	r, err = processTask(query, 1)
+	query = newQuery("friend", nil, []string{"anyofterms", "", "photon notphoton ignored"})
+	r, err = processTask(context.Background(), query, 1)
 	require.NoError(t, err)
 
 	require.EqualValues(t, [][]uint64{
@@ -316,8 +319,8 @@ func TestProcessTaskIndex(t *testing.T) {
 }
 
 /*
-func populateGraphForSort(t *testing.T, ps *store.Store) {
-	edge := &taskp.DirectedEdge{
+func populateGraphForSort(t *testing.T, ps store.Store) {
+	edge := &protos.DirectedEdge{
 		Label: "author1",
 		Attr:  "dob",
 	}
@@ -347,14 +350,14 @@ func populateGraphForSort(t *testing.T, ps *store.Store) {
 	time.Sleep(200 * time.Millisecond) // Let indexing finish.
 }
 
-// newSort creates a taskp.Sort for sorting.
-func newSort(uids [][]uint64, offset, count int) *taskp.Sort {
+// newSort creates a protos.Sort for sorting.
+func newSort(uids [][]uint64, offset, count int) *protos.Sort {
 	x.AssertTrue(uids != nil)
-	uidMatrix := make([]*taskp.List, len(uids))
+	uidMatrix := make([]*protos.List, len(uids))
 	for i, l := range uids {
-		uidMatrix[i] = &taskp.List{Uids: l}
+		uidMatrix[i] = &protos.List{Uids: l}
 	}
-	return &taskp.Sort{
+	return &protos.Sort{
 		Attr:      "dob",
 		Offset:    int32(offset),
 		Count:     int32(count),
@@ -363,7 +366,7 @@ func newSort(uids [][]uint64, offset, count int) *taskp.Sort {
 }
 
 func TestProcessSort(t *testing.T) {
-	dir, ps := initTest(t, `dob:date @index`)
+	dir, ps := initTest(t, `dob:date @index .`)
 	defer os.RemoveAll(dir)
 	defer ps.Close()
 	populateGraphForSort(t, ps)
@@ -385,7 +388,7 @@ func TestProcessSort(t *testing.T) {
 }
 
 func TestProcessSortOffset(t *testing.T) {
-	dir, ps := initTest(t, `dob:date @index`)
+	dir, ps := initTest(t, `dob:date @index .`)
 	defer os.RemoveAll(dir)
 	defer ps.Close()
 	populateGraphForSort(t, ps)
@@ -447,7 +450,7 @@ func TestProcessSortOffset(t *testing.T) {
 }
 
 func TestProcessSortCount(t *testing.T) {
-	dir, ps := initTest(t, `dob:date @index`)
+	dir, ps := initTest(t, `dob:date @index .`)
 	defer os.RemoveAll(dir)
 	defer ps.Close()
 	populateGraphForSort(t, ps)
@@ -517,7 +520,7 @@ func TestProcessSortCount(t *testing.T) {
 }
 
 func TestProcessSortOffsetCount(t *testing.T) {
-	dir, ps := initTest(t, `dob:date @index`)
+	dir, ps := initTest(t, `dob:date @index .`)
 	defer os.RemoveAll(dir)
 	defer ps.Close()
 	populateGraphForSort(t, ps)

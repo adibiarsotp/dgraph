@@ -1,17 +1,18 @@
 /*
- * Copyright 2017 Dgraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package query
@@ -23,8 +24,8 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 func populateGraphWithFacets(t *testing.T) {
@@ -35,9 +36,9 @@ func populateGraphWithFacets(t *testing.T) {
 	friendFacets2 := map[string]string{
 		"since": "2005-05-02T15:04:05", "close": "true", "family": "false", "age": "33"}
 	friendFacets3 := map[string]string{
-		"since": "2004-05-02T15:04:05", "close": "true", "family": "true"}
+		"since": "2004-05-02T15:04:05", "close": "true", "family": "true", "tag": "\"Domain3\""}
 	friendFacets4 := map[string]string{
-		"since": "2007-05-02T15:04:05", "close": "false", "family": "true"}
+		"since": "2007-05-02T15:04:05", "close": "false", "family": "true", "tag": "34"}
 	addEdgeToUID(t, "friend", 1, 23, friendFacets1)
 	addEdgeToUID(t, "friend", 1, 24, friendFacets3)
 	addEdgeToUID(t, "friend", 1, 25, friendFacets4)
@@ -48,14 +49,14 @@ func populateGraphWithFacets(t *testing.T) {
 	addEdgeToUID(t, "friend", 23, 1, friendFacets1)
 
 	friendFacets5 := map[string]string{
-		"games": "football basketball chess tennis", "close": "false", "age": "35"}
+		"games": `"football basketball chess tennis"`, "close": "false", "age": "35"}
 	friendFacets6 := map[string]string{
-		"games": "football basketball hockey", "close": "false"}
+		"games": `"football basketball hockey"`, "close": "false"}
 
 	addEdgeToUID(t, "friend", 31, 1, friendFacets5)
 	addEdgeToUID(t, "friend", 31, 25, friendFacets6)
 
-	nameFacets := map[string]string{"origin": "french"}
+	nameFacets := map[string]string{"origin": `"french"`}
 	// Now let's add a few properties for the main user.
 	addEdgeToValue(t, "name", 1, "Michonne", nameFacets)
 	addEdgeToValue(t, "gender", 1, "female", nil)
@@ -65,9 +66,13 @@ func populateGraphWithFacets(t *testing.T) {
 	addEdgeToValue(t, "gender", 23, "male", nil)
 	addEdgeToValue(t, "name", 24, "Glenn Rhee", nameFacets)
 	addEdgeToValue(t, "name", 25, "Daryl Dixon", nil)
+
 	addEdgeToValue(t, "name", 31, "Andrea", nil)
+
 	addEdgeToValue(t, "name", 33, "Michale", nil)
 	// missing name for 101 -- no name edge and no facets.
+
+	addEdgeToLangValue(t, "name", 320, "Test facet", "en", map[string]string{"type": `"Test facet with lang"`})
 
 	time.Sleep(5 * time.Millisecond)
 }
@@ -105,6 +110,29 @@ func TestRetrieveFacetsSimple(t *testing.T) {
 		js)
 }
 
+func TestRetrieveFacetsAsVars(t *testing.T) {
+	populateGraphWithFacets(t)
+	defer teardownGraphWithFacets(t)
+	// to see how friend @facets are positioned in output.
+	query := `
+		{
+			var(id:0x1) {
+				friend @facets(a as since)
+			}
+
+			me(id: 23) {
+				name
+				var(a)
+			}
+		}
+	`
+
+	js := processToFastJSON(t, query)
+	require.JSONEq(t,
+		`{"me":[{"name":"Rick Grimes","var(a)":"2006-01-02T15:04:05Z"}]}`,
+		js)
+}
+
 func TestRetrieveFacetsUidValues(t *testing.T) {
 	populateGraphWithFacets(t)
 	defer teardownGraphWithFacets(t)
@@ -121,7 +149,7 @@ func TestRetrieveFacetsUidValues(t *testing.T) {
 
 	js := processToFastJSON(t, query)
 	require.JSONEq(t,
-		`{"me":[{"friend":[{"@facets":{"_":{"since":"2006-01-02T15:04:05Z"},"name":{"origin":"french"}},"name":"Rick Grimes"},{"@facets":{"_":{"close":true,"family":true,"since":"2004-05-02T15:04:05Z"},"name":{"origin":"french"}},"name":"Glenn Rhee"},{"@facets":{"_":{"close":false,"family":true,"since":"2007-05-02T15:04:05Z"}},"name":"Daryl Dixon"},{"@facets":{"_":{"since":"2006-01-02T15:04:05Z"}},"name":"Andrea"},{"@facets":{"_":{"age":33,"close":true,"family":false,"since":"2005-05-02T15:04:05Z"}}}]}]}`,
+		`{"me":[{"friend":[{"@facets":{"_":{"since":"2006-01-02T15:04:05Z"},"name":{"origin":"french"}},"name":"Rick Grimes"},{"@facets":{"_":{"close":true,"family":true,"since":"2004-05-02T15:04:05Z","tag":"Domain3"},"name":{"origin":"french"}},"name":"Glenn Rhee"},{"@facets":{"_":{"close":false,"family":true,"since":"2007-05-02T15:04:05Z", "tag":34}},"name":"Daryl Dixon"},{"@facets":{"_":{"since":"2006-01-02T15:04:05Z"}},"name":"Andrea"},{"@facets":{"_":{"age":33,"close":true,"family":false,"since":"2005-05-02T15:04:05Z"}}}]}]}`,
 		js)
 }
 
@@ -143,7 +171,7 @@ func TestRetrieveFacetsAll(t *testing.T) {
 
 	js := processToFastJSON(t, query)
 	require.JSONEq(t,
-		`{"me":[{"@facets":{"name":{"origin":"french"}},"friend":[{"@facets":{"_":{"since":"2006-01-02T15:04:05Z"},"name":{"origin":"french"}},"gender":"male","name":"Rick Grimes"},{"@facets":{"_":{"close":true,"family":true,"since":"2004-05-02T15:04:05Z"},"name":{"origin":"french"}},"name":"Glenn Rhee"},{"@facets":{"_":{"close":false,"family":true,"since":"2007-05-02T15:04:05Z"}},"name":"Daryl Dixon"},{"@facets":{"_":{"since":"2006-01-02T15:04:05Z"}},"name":"Andrea"},{"@facets":{"_":{"age":33,"close":true,"family":false,"since":"2005-05-02T15:04:05Z"}}}],"gender":"female","name":"Michonne"}]}`,
+		`{"me":[{"@facets":{"name":{"origin":"french"}},"friend":[{"@facets":{"_":{"since":"2006-01-02T15:04:05Z"},"name":{"origin":"french"}},"gender":"male","name":"Rick Grimes"},{"@facets":{"_":{"close":true,"family":true,"since":"2004-05-02T15:04:05Z","tag":"Domain3"},"name":{"origin":"french"}},"name":"Glenn Rhee"},{"@facets":{"_":{"close":false,"family":true,"since":"2007-05-02T15:04:05Z","tag":34}},"name":"Daryl Dixon"},{"@facets":{"_":{"since":"2006-01-02T15:04:05Z"}},"name":"Andrea"},{"@facets":{"_":{"age":33,"close":true,"family":false,"since":"2005-05-02T15:04:05Z"}}}],"gender":"female","name":"Michonne"}]}`,
 		js)
 }
 
@@ -256,7 +284,7 @@ func TestFacetsMutation(t *testing.T) {
 	populateGraphWithFacets(t)
 	defer teardownGraphWithFacets(t)
 	delEdgeToUID(t, "friend", 1, 24) // Delete friendship between Michonne and Glenn
-	friendFacets := map[string]string{"since": "11-10-2001", "close": "false", "family": "false"}
+	friendFacets := map[string]string{"since": "2001-11-10T00:00:00Z", "close": "false", "family": "false"}
 	addEdgeToUID(t, "friend", 1, 101, friendFacets) // and 101 is not close friend now.
 	query := `
 		{
@@ -271,7 +299,7 @@ func TestFacetsMutation(t *testing.T) {
 
 	js := processToFastJSON(t, query)
 	require.JSONEq(t,
-		`{"me":[{"friend":[{"@facets":{"_":{"since":"2006-01-02T15:04:05Z"}},"name":"Rick Grimes"},{"@facets":{"_":{"close":false,"family":true,"since":"2007-05-02T15:04:05Z"}},"name":"Daryl Dixon"},{"@facets":{"_":{"since":"2006-01-02T15:04:05Z"}},"name":"Andrea"},{"@facets":{"_":{"close":false,"family":false,"since":"11-10-2001"}}}],"name":"Michonne"}]}`,
+		`{"me":[{"friend":[{"@facets":{"_":{"since":"2006-01-02T15:04:05Z"}},"name":"Rick Grimes"},{"@facets":{"_":{"close":false,"family":true,"since":"2007-05-02T15:04:05Z","tag":34}},"name":"Daryl Dixon"},{"@facets":{"_":{"since":"2006-01-02T15:04:05Z"}},"name":"Andrea"},{"@facets":{"_":{"close":false,"family":false,"since":"2001-11-10T00:00:00Z"}}}],"name":"Michonne"}]}`,
 		js)
 }
 
@@ -288,12 +316,17 @@ func TestToProtoFacets(t *testing.T) {
 			}
 		}
 	`
-	pb := processToPB(t, query, true)
+	pb := processToPB(t, query, map[string]string{}, true)
 	require.EqualValues(t,
 		`attribute: "_root_"
 children: <
-  uid: 1
   attribute: "me"
+  properties: <
+    prop: "_uid_"
+    value: <
+      uid_val: 1
+    >
+  >
   properties: <
     prop: "name"
     value: <
@@ -301,8 +334,13 @@ children: <
     >
   >
   children: <
-    uid: 23
     attribute: "friend"
+    properties: <
+      prop: "_uid_"
+      value: <
+        uid_val: 23
+      >
+    >
     properties: <
       prop: "name"
       value: <
@@ -335,8 +373,13 @@ children: <
     >
   >
   children: <
-    uid: 24
     attribute: "friend"
+    properties: <
+      prop: "_uid_"
+      value: <
+        uid_val: 24
+      >
+    >
     properties: <
       prop: "name"
       value: <
@@ -376,13 +419,24 @@ children: <
               str_val: "2004-05-02T15:04:05Z"
             >
           >
+          properties: <
+            prop: "tag"
+            value: <
+              str_val: "Domain3"
+            >
+          >
         >
       >
     >
   >
   children: <
-    uid: 25
     attribute: "friend"
+    properties: <
+      prop: "_uid_"
+      value: <
+        uid_val: 25
+      >
+    >
     properties: <
       prop: "name"
       value: <
@@ -413,13 +467,24 @@ children: <
               str_val: "2007-05-02T15:04:05Z"
             >
           >
+          properties: <
+            prop: "tag"
+            value: <
+              int_val: 34
+            >
+          >
         >
       >
     >
   >
   children: <
-    uid: 31
     attribute: "friend"
+    properties: <
+      prop: "_uid_"
+      value: <
+        uid_val: 31
+      >
+    >
     properties: <
       prop: "name"
       value: <
@@ -443,8 +508,13 @@ children: <
     >
   >
   children: <
-    uid: 101
     attribute: "friend"
+    properties: <
+      prop: "_uid_"
+      value: <
+        uid_val: 101
+      >
+    >
     children: <
       attribute: "@facets"
       children: <
@@ -493,7 +563,7 @@ children: <
   >
 >
 `,
-		proto.MarshalTextString(pb))
+		proto.MarshalTextString(pb[0]))
 }
 
 func TestFacetsFilterSimple(t *testing.T) {
@@ -516,6 +586,50 @@ func TestFacetsFilterSimple(t *testing.T) {
 	// 0x65 does not have name.
 	require.JSONEq(t,
 		`{"me":[{"friend":[{"_uid_":"0x18","name":"Glenn Rhee"},{"_uid_":"0x65"}],"name":"Michonne"}]}`,
+		js)
+}
+
+func TestFacetsFilterSimple2(t *testing.T) {
+	populateGraphWithFacets(t)
+	defer teardownGraphWithFacets(t)
+	// find close friends of 1
+	query := `
+		{
+			me(id:0x1) {
+				name
+				friend @facets(eq(tag, "Domain3")) {
+					name
+					_uid_
+				}
+			}
+		}
+	`
+
+	js := processToFastJSON(t, query)
+	require.JSONEq(t,
+		`{"me":[{"friend":[{"_uid_":"0x18","name":"Glenn Rhee"}],"name":"Michonne"}]}`,
+		js)
+}
+
+func TestFacetsFilterSimple3(t *testing.T) {
+	populateGraphWithFacets(t)
+	defer teardownGraphWithFacets(t)
+	// find close friends of 1
+	query := `
+		{
+			me(id:0x1) {
+				name
+				friend @facets(eq(tag, "34")) {
+					name
+					_uid_
+				}
+			}
+		}
+	`
+
+	js := processToFastJSON(t, query)
+	require.JSONEq(t,
+		`{"me":[{"friend":[{"_uid_":"0x19","name":"Daryl Dixon"}],"name":"Michonne"}]}`,
 		js)
 }
 
@@ -564,7 +678,7 @@ func TestFacetsFilterAnd(t *testing.T) {
 		js)
 }
 
-func TestFacetsFilterLeq(t *testing.T) {
+func TestFacetsFilterle(t *testing.T) {
 	populateGraphWithFacets(t)
 	defer teardownGraphWithFacets(t)
 	// find friends of 1 below 36 years of age.
@@ -572,7 +686,7 @@ func TestFacetsFilterLeq(t *testing.T) {
 		{
 			me(id:0x1) {
 				name
-				friend @facets(leq(age, 35)) {
+				friend @facets(le(age, 35)) {
 					name
 					_uid_
 				}
@@ -586,7 +700,7 @@ func TestFacetsFilterLeq(t *testing.T) {
 		js)
 }
 
-func TestFacetsFilterGeq(t *testing.T) {
+func TestFacetsFilterge(t *testing.T) {
 	populateGraphWithFacets(t)
 	defer teardownGraphWithFacets(t)
 	// find friends of 1 above 32 years of age.
@@ -594,7 +708,7 @@ func TestFacetsFilterGeq(t *testing.T) {
 		{
 			me(id:0x1) {
 				name
-				friend @facets(geq(age, 33)) {
+				friend @facets(ge(age, 33)) {
 					name
 					_uid_
 				}
@@ -608,7 +722,7 @@ func TestFacetsFilterGeq(t *testing.T) {
 		js)
 }
 
-func TestFacetsFilterAndOrLeq(t *testing.T) {
+func TestFacetsFilterAndOrle(t *testing.T) {
 	populateGraphWithFacets(t)
 	defer teardownGraphWithFacets(t)
 	// find close or family friends of 1 before 2007-01-10
@@ -616,7 +730,7 @@ func TestFacetsFilterAndOrLeq(t *testing.T) {
 		{
 			me(id:0x1) {
 				name
-				friend @facets(eq(close, true) OR eq(family, true) AND leq(since, "2007-01-10")) {
+				friend @facets(eq(close, true) OR eq(family, true) AND le(since, "2007-01-10")) {
 					name
 					_uid_
 				}
@@ -631,7 +745,7 @@ func TestFacetsFilterAndOrLeq(t *testing.T) {
 		js)
 }
 
-func TestFacetsFilterAndOrGeq2(t *testing.T) {
+func TestFacetsFilterAndOrge2(t *testing.T) {
 	populateGraphWithFacets(t)
 	defer teardownGraphWithFacets(t)
 	// find close or family friends of 1 after 2007-01-10
@@ -639,7 +753,7 @@ func TestFacetsFilterAndOrGeq2(t *testing.T) {
 		{
 			me(id:0x1) {
 				name
-				friend @facets(eq(close, false) OR eq(family, true) AND geq(since, "2007-01-10")) {
+				friend @facets(eq(close, false) OR eq(family, true) AND ge(since, "2007-01-10")) {
 					name
 					_uid_
 				}
@@ -653,16 +767,16 @@ func TestFacetsFilterAndOrGeq2(t *testing.T) {
 		js)
 }
 
-func TestFacetsFilterNotAndOrGeqMutuallyExclusive(t *testing.T) {
+func TestFacetsFilterNotAndOrgeMutuallyExclusive(t *testing.T) {
 	populateGraphWithFacets(t)
 	defer teardownGraphWithFacets(t)
 	// find Not (close or family friends of 1 after 2007-01-10)
-	// Mutually exclusive of above result : TestFacetsFilterNotAndOrGeq
+	// Mutually exclusive of above result : TestFacetsFilterNotAndOrge
 	query := `
 		{
 			me(id:0x1) {
 				name
-				friend @facets(not (eq(close, false) OR eq(family, true) AND geq(since, "2007-01-10"))) {
+				friend @facets(not (eq(close, false) OR eq(family, true) AND ge(since, "2007-01-10"))) {
 					name
 					_uid_
 				}
@@ -684,7 +798,7 @@ func TestFacetsFilterUnknownFacets(t *testing.T) {
 		{
 			me(id:0x1) {
 				name
-				friend @facets(geq(dob, "2007-01-10")) {
+				friend @facets(ge(dob, "2007-01-10")) {
 					name
 					_uid_
 				}
@@ -706,7 +820,7 @@ func TestFacetsFilterUnknownOrKnown(t *testing.T) {
 		{
 			me(id:0x1) {
 				name
-				friend @facets(geq(dob, "2007-01-10") OR eq(family, true)) {
+				friend @facets(ge(dob, "2007-01-10") OR eq(family, true)) {
 					name
 					_uid_
 				}
@@ -718,26 +832,6 @@ func TestFacetsFilterUnknownOrKnown(t *testing.T) {
 	require.JSONEq(t,
 		`{"me":[{"friend":[{"_uid_":"0x18","name":"Glenn Rhee"},{"_uid_":"0x19","name":"Daryl Dixon"}],"name":"Michonne"}]}`,
 		js)
-}
-
-func TestFacetsFilterFail1(t *testing.T) {
-	populateGraphWithFacets(t)
-	defer teardownGraphWithFacets(t)
-	// integer overflow error is propagated to stop the query.
-	query := `
-		{
-			me(id:0x1) {
-				name
-				friend @facets(geq(age, 111111111111111111118888888)) {
-					name
-					_uid_
-				}
-			}
-		}
-	`
-
-	_, err := processToFastJsonReq(t, query)
-	require.Error(t, err)
 }
 
 func TestFacetsFilterallofterms(t *testing.T) {
@@ -896,7 +990,7 @@ func TestFacetsFilterAtValueFail(t *testing.T) {
 	{
 		me(id:1) {
 			friend {
-				name @facets(eq(origin, french))
+				name @facets(eq(origin, "french"))
 			}
 		}
 	}
@@ -926,4 +1020,19 @@ func TestFacetsFilterAndRetrieval(t *testing.T) {
 	require.JSONEq(t,
 		`{"me":[{"friend":[{"@facets":{"_":{"family":true}},"_uid_":"0x18","name":"Glenn Rhee"},{"@facets":{"_":{"family":false}},"_uid_":"0x65"}],"name":"Michonne"}]}`,
 		js)
+}
+
+func TestFacetWithLang(t *testing.T) {
+	populateGraphWithFacets(t)
+	defer teardownGraphWithFacets(t)
+	query := `
+		{
+			me(id:320) {
+				name@en @facets
+			}
+		}
+	`
+
+	js := processToFastJSON(t, query)
+	require.JSONEq(t, `{"me":[{"@facets":{"name@en":{"type":"Test facet with lang"}},"name@en":"Test facet"}]}`, js)
 }

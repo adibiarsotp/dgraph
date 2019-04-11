@@ -1,61 +1,65 @@
 /*
- * Copyright 2016 DGraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package worker
 
 import (
-	"regexp"
+	"bytes"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
+	"github.com/dgraph-io/badger/badger"
 	"golang.org/x/net/context"
 
-	"github.com/dgraph-io/dgraph/algo"
-	"github.com/dgraph-io/dgraph/group"
-	"github.com/dgraph-io/dgraph/posting"
-	"github.com/dgraph-io/dgraph/protos/facetsp"
-	"github.com/dgraph-io/dgraph/protos/taskp"
-	"github.com/dgraph-io/dgraph/protos/typesp"
-	"github.com/dgraph-io/dgraph/protos/workerp"
-	"github.com/dgraph-io/dgraph/schema"
-	"github.com/dgraph-io/dgraph/task"
-	"github.com/dgraph-io/dgraph/tok"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/types/facets"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/algo"
+	"github.com/adibiarsotp/dgraph/group"
+	"github.com/adibiarsotp/dgraph/posting"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/schema"
+	"github.com/adibiarsotp/dgraph/task"
+	"github.com/adibiarsotp/dgraph/tok"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/types/facets"
+	"github.com/adibiarsotp/dgraph/x"
+
+	cindex "github.com/google/codesearch/index"
+	cregexp "github.com/google/codesearch/regexp"
 )
 
 var (
-	emptyUIDList taskp.List
-	emptyResult  taskp.Result
-	exactTok     tok.ExactTokenizer
+	emptyUIDList protos.List
+	emptyResult  protos.Result
+	regexTok     tok.ExactTokenizer
 )
 
 // ProcessTaskOverNetwork is used to process the query and get the result from
 // the instance which stores posting list corresponding to the predicate in the
 // query.
-func ProcessTaskOverNetwork(ctx context.Context, q *taskp.Query) (*taskp.Result, error) {
+func ProcessTaskOverNetwork(ctx context.Context, q *protos.Query) (*protos.Result, error) {
 	attr := q.Attr
 	gid := group.BelongsTo(attr)
 	x.Trace(ctx, "attr: %v groupId: %v", attr, gid)
 
 	if groups().ServesGroup(gid) {
 		// No need for a network call, as this should be run from within this instance.
-		return processTask(q, gid)
+		return processTask(ctx, q, gid)
 	}
 
 	// Send this over the network.
@@ -70,7 +74,7 @@ func ProcessTaskOverNetwork(ctx context.Context, q *taskp.Query) (*taskp.Result,
 	defer pl.Put(conn)
 	x.Trace(ctx, "Sending request to %v", addr)
 
-	c := workerp.NewWorkerClient(conn)
+	c := protos.NewWorkerClient(conn)
 	reply, err := c.ServeTask(ctx, q)
 	if err != nil {
 		x.TraceError(ctx, x.Wrapf(err, "Error while calling Worker.ServeTask"))
@@ -86,7 +90,10 @@ func ProcessTaskOverNetwork(ctx context.Context, q *taskp.Query) (*taskp.Result,
 func convertValue(attr, data string) (types.Val, error) {
 	// Parse given value and get token. There should be only one token.
 	t, err := schema.State().TypeOf(attr)
-	if err != nil || !t.IsScalar() {
+	if err != nil {
+		return types.Val{}, err
+	}
+	if !t.IsScalar() {
 		return types.Val{}, x.Errorf("Attribute %s is not valid scalar type", attr)
 	}
 
@@ -96,8 +103,8 @@ func convertValue(attr, data string) (types.Val, error) {
 }
 
 // Returns nil byte on error
-func convertToType(v types.Val, typ types.TypeID) (*taskp.Value, error) {
-	result := &taskp.Value{ValType: int32(typ), Val: x.Nilbyte}
+func convertToType(v types.Val, typ types.TypeID) (*protos.TaskValue, error) {
+	result := &protos.TaskValue{ValType: int32(typ), Val: x.Nilbyte}
 	if v.Tid == typ {
 		result.Val = v.Value.([]byte)
 		return result, nil
@@ -132,18 +139,20 @@ const (
 	StandardFn = 100
 )
 
+const numPart = uint64(32)
+
 func parseFuncType(arr []string) (FuncType, string) {
 	if len(arr) == 0 {
 		return NotAFunction, ""
 	}
 	f := strings.ToLower(arr[0])
 	switch f {
-	case "leq", "geq", "lt", "gt", "eq":
+	case "le", "ge", "lt", "gt", "eq":
 		// gt(release_date, "1990") is 'CompareAttr' which
 		//    takes advantage of indexed-attr
 		// gt(count(films), 0) is 'CompareScalar', we first do
 		//    counting on attr, then compare the result as scalar with int
-		if len(arr) > 2 && arr[1] == "count" {
+		if len(arr) > 3 && arr[2] == "count" {
 			return CompareScalarFn, f
 		}
 		return CompareAttrFn, f
@@ -172,9 +181,46 @@ func needsIndex(fnType FuncType) bool {
 	}
 }
 
+func getPredList(uid uint64, gid uint32) ([]types.Val, error) {
+	key := x.DataKey("_predicate_", uid)
+	// Get or create the posting list for an entity, attribute combination.
+	pl, decr := posting.GetOrCreate(key, gid)
+	defer decr()
+	return pl.AllValues()
+}
+
 // processTask processes the query, accumulates and returns the result.
-func processTask(q *taskp.Query, gid uint32) (*taskp.Result, error) {
+func processTask(ctx context.Context, q *protos.Query, gid uint32) (*protos.Result, error) {
+	var out protos.Result
 	attr := q.Attr
+
+	if attr == "_predicate_" {
+		predMap := make(map[string]struct{})
+		for _, uid := range q.UidList.Uids {
+			predicates, err := getPredList(uid, gid)
+			if err != nil {
+				return &out, err
+			}
+			for _, pred := range predicates {
+				predMap[string(pred.Value.([]byte))] = struct{}{}
+			}
+		}
+		predList := make([]string, 0, len(predMap))
+		for pred := range predMap {
+			predList = append(predList, pred)
+		}
+		sort.Strings(predList)
+		for _, pred := range predList {
+			// Add it to values.
+			out.UidMatrix = append(out.UidMatrix, &emptyUIDList)
+			out.Values = append(out.Values, &protos.TaskValue{
+				ValType: int32(types.StringID),
+				Val:     []byte(pred),
+			})
+		}
+		return &out, nil
+	}
+
 	srcFn, err := parseSrcFn(q)
 	if err != nil {
 		return nil, err
@@ -187,7 +233,6 @@ func processTask(q *taskp.Query, gid uint32) (*taskp.Result, error) {
 		return nil, x.Errorf("Predicate %s is not indexed", q.Attr)
 	}
 
-	var out taskp.Result
 	opts := posting.ListOptions{
 		AfterUID: uint64(q.AfterUid),
 	}
@@ -223,7 +268,7 @@ func processTask(q *taskp.Query, gid uint32) (*taskp.Result, error) {
 		if val.Tid == types.PasswordID && srcFn.fnType != PasswordFn {
 			return nil, x.Errorf("Attribute `%s` of type password cannot be fetched", attr)
 		}
-		newValue := &taskp.Value{ValType: int32(val.Tid), Val: x.Nilbyte}
+		newValue := &protos.TaskValue{ValType: int32(val.Tid), Val: x.Nilbyte}
 		if isValueEdge {
 			if typ, err := schema.State().TypeOf(attr); err == nil {
 				newValue, err = convertToType(val, typ)
@@ -239,12 +284,12 @@ func processTask(q *taskp.Query, gid uint32) (*taskp.Result, error) {
 		// get filtered uids and facets.
 		type result struct {
 			uid    uint64
-			facets []*facetsp.Facet
+			facets []*protos.Facet
 		}
 		var filteredRes []*result
 		if !isValueEdge { // for uid edge.. get postings
 			var perr error
-			pl.Postings(opts, func(p *typesp.Posting) bool {
+			pl.Postings(opts, func(p *protos.Posting) bool {
 				res := true
 				res, perr = applyFacetsTree(p.Facets, facetsTree)
 				if perr != nil {
@@ -268,18 +313,18 @@ func processTask(q *taskp.Query, gid uint32) (*taskp.Result, error) {
 		// add facets to result.
 		if q.FacetParam != nil {
 			if isValueEdge {
-				fs, err := pl.Facets(q.FacetParam)
+				fs, err := pl.Facets(q.FacetParam, q.Langs)
 				if err != nil {
-					fs = []*facetsp.Facet{}
+					fs = []*protos.Facet{}
 				}
 				out.FacetMatrix = append(out.FacetMatrix,
-					&facetsp.List{[]*facetsp.Facets{{fs}}})
+					&protos.FacetsList{[]*protos.Facets{{fs}}})
 			} else {
-				var fcsList []*facetsp.Facets
+				var fcsList []*protos.Facets
 				for _, fres := range filteredRes {
-					fcsList = append(fcsList, &facetsp.Facets{fres.facets})
+					fcsList = append(fcsList, &protos.Facets{fres.facets})
 				}
-				out.FacetMatrix = append(out.FacetMatrix, &facetsp.List{fcsList})
+				out.FacetMatrix = append(out.FacetMatrix, &protos.FacetsList{fcsList})
 			}
 		}
 
@@ -298,7 +343,7 @@ func processTask(q *taskp.Query, gid uint32) (*taskp.Result, error) {
 			if len(newValue.Val) == 0 {
 				out.Values[lastPos] = task.FalseVal
 			}
-			pwd := q.SrcFunc[1]
+			pwd := q.SrcFunc[2]
 			err = types.VerifyPassword(pwd, string(newValue.Val))
 			if err != nil {
 				out.Values[lastPos] = task.FalseVal
@@ -313,14 +358,14 @@ func processTask(q *taskp.Query, gid uint32) (*taskp.Result, error) {
 		if srcFn.fnType == CompareScalarFn {
 			count := int64(pl.Length(0))
 			if EvalCompare(srcFn.fname, count, srcFn.threshold) {
-				tlist := &taskp.List{[]uint64{q.UidList.Uids[i]}}
+				tlist := &protos.List{[]uint64{q.UidList.Uids[i]}}
 				out.UidMatrix = append(out.UidMatrix, tlist)
 			}
 			continue
 		}
 
 		// The more usual case: Getting the UIDs.
-		uidList := new(taskp.List)
+		uidList := new(protos.List)
 		for _, fres := range filteredRes {
 			uidList.Uids = append(uidList.Uids, fres.uid)
 		}
@@ -328,73 +373,116 @@ func processTask(q *taskp.Query, gid uint32) (*taskp.Result, error) {
 	}
 
 	if srcFn.fnType == CompareScalarFn && srcFn.isCompareAtRoot {
-		it := pstore.NewIterator()
-		defer it.Close()
-		pk := x.Parse(x.DataKey(q.Attr, 0))
-		dataPrefix := pk.DataPrefix()
-		if q.Reverse {
-			pk = x.Parse(x.ReverseKey(q.Attr, 0))
-			dataPrefix = pk.ReversePrefix()
-		}
-
-		for it.Seek(dataPrefix); it.ValidForPrefix(dataPrefix); it.Next() {
-			x.AssertTruef(pk.Attr == q.Attr,
-				"Invalid key obtained for comparison")
-			key := it.Key().Data()
-			pl, decr := posting.GetOrUnmarshal(key, it.Value().Data(), gid)
+		f := func(key, val []byte, mu *sync.Mutex) {
+			pl, decr := posting.GetOrUnmarshal(key, val, gid)
 			count := int64(pl.Length(0))
 			decr()
 			if EvalCompare(srcFn.fname, count, srcFn.threshold) {
 				pk := x.Parse(key)
 				// TODO: Look if we want to put these UIDs in one list before
 				// passing it back to query package.
-				tlist := &taskp.List{[]uint64{pk.Uid}}
+				tlist := &protos.List{[]uint64{pk.Uid}}
+				mu.Lock()
 				out.UidMatrix = append(out.UidMatrix, tlist)
+				mu.Unlock()
 			}
 		}
+		iterateParallel(ctx, q, f)
 	}
 
 	if srcFn.fnType == RegexFn {
 		// Go through the indexkeys for the predicate and match them with
 		// the regex matcher.
-		it := pstore.NewIterator()
-		defer it.Close()
-		prefixKey := x.IndexKey(q.Attr, string(exactTok.Identifier()))
-		for it.Seek(prefixKey); it.ValidForPrefix(prefixKey); it.Next() {
-			key := it.Key().Data()
-			pk := x.Parse(key)
-			x.AssertTrue(pk.Attr == q.Attr)
-			term := pk.Term[1:] // skip the first byte which is tokenizer prefix.
-			if srcFn.regex.MatchString(term) {
-				pl, decr := posting.GetOrUnmarshal(key, it.Value().Data(), gid)
-				out.UidMatrix = append(out.UidMatrix, pl.Uids(opts))
-				decr()
-			}
-		}
-	}
-
-	if srcFn.fnType == CompareAttrFn && len(srcFn.tokens) > 0 &&
-		srcFn.ineqValueToken == srcFn.tokens[0] {
-		// Need to evaluate inequality for entries in the first bucket.
 		typ, err := schema.State().TypeOf(attr)
 		if err != nil || !typ.IsScalar() {
 			return nil, x.Errorf("Attribute not scalar: %s %v", attr, typ)
 		}
-
-		x.AssertTrue(len(out.UidMatrix) > 0)
-		// Filter the first row of UidMatrix. Since ineqValue != nil, we may
-		// assume that ineqValue is equal to the first token found in TokensTable.
-		algo.ApplyFilter(out.UidMatrix[0], func(uid uint64, i int) bool {
-			sv, err := fetchValue(uid, attr, q.Langs, typ)
-			if sv.Value == nil || err != nil {
-				return false
+		if typ != types.StringID {
+			return nil,
+				x.Errorf("Got non-string type. Regex match is allowed only on string type.")
+		}
+		tokenizers := schema.State().TokenizerNames(q.Attr)
+		var found bool
+		for _, t := range tokenizers {
+			if t == "trigram" { // TODO(tzdybal) - maybe just rename to 'regex' tokenizer?
+				found = true
 			}
-			return compareTypeVals(q.SrcFunc[0], sv, srcFn.ineqValue)
-		})
+		}
+		if !found {
+			return nil,
+				x.Errorf("Attribute %v does not have trigram index for regex matching.", q.Attr)
+		}
+
+		query := cindex.RegexpQuery(srcFn.regex.Syntax)
+		empty := protos.List{}
+		uids, err := uidsForRegex(attr, gid, query, &empty)
+		if uids != nil {
+			out.UidMatrix = append(out.UidMatrix, uids)
+
+			var values []types.Val
+			for _, uid := range uids.Uids {
+				key := x.DataKey(attr, uid)
+				pl, decr := posting.GetOrCreate(key, gid)
+
+				var val types.Val
+				if len(srcFn.lang) > 0 {
+					val, err = pl.ValueForTag(srcFn.lang)
+				} else {
+					val, err = pl.Value()
+				}
+
+				if err != nil {
+					decr()
+					continue
+				}
+				// conver data from binary to appropriate format
+				strVal, err := types.Convert(val, types.StringID)
+				if err == nil {
+					values = append(values, strVal)
+				}
+				decr() // Decrement the reference count of the pl.
+			}
+
+			filtered := matchRegex(uids, values, srcFn.regex)
+			for i := 0; i < len(out.UidMatrix); i++ {
+				algo.IntersectWith(out.UidMatrix[i], filtered, out.UidMatrix[i])
+			}
+		} else {
+			return nil, err
+		}
+	}
+
+	// We fetch the actual value for the uids, compare them to the value in the
+	// request and filter the uids only if the tokenizer IsLossy.
+	if srcFn.fnType == CompareAttrFn && len(srcFn.tokens) > 0 &&
+		srcFn.ineqValueToken == srcFn.tokens[0] {
+		tokenizer, err := pickTokenizer(attr, srcFn.fname)
+		// We should already have checked this in getInequalityTokens.
+		x.Check(err)
+		// Only if the tokenizer that we used IsLossy, then we need to fetch
+		// and compare the actual values.
+		if tokenizer.IsLossy() {
+			// Need to evaluate inequality for entries in the first bucket.
+			typ, err := schema.State().TypeOf(attr)
+			if err != nil || !typ.IsScalar() {
+				return nil, x.Errorf("Attribute not scalar: %s %v", attr, typ)
+			}
+
+			x.AssertTrue(len(out.UidMatrix) > 0)
+			// Filter the first row of UidMatrix. Since ineqValue != nil, we may
+			// assume that ineqValue is equal to the first token found in TokensTable.
+			algo.ApplyFilter(out.UidMatrix[0], func(uid uint64, i int) bool {
+				sv, err := fetchValue(uid, attr, q.Langs, typ)
+				if sv.Value == nil || err != nil {
+					return false
+				}
+				return types.CompareVals(q.SrcFunc[0], sv, srcFn.ineqValue)
+			})
+		}
 	}
 
 	// If geo filter, do value check for correctness.
-	var values []*taskp.Value
+	var values []*protos.TaskValue
 	if srcFn.geoQuery != nil {
 		uids := algo.MergeSorted(out.UidMatrix)
 		for _, uid := range uids.Uids {
@@ -402,7 +490,7 @@ func processTask(q *taskp.Query, gid uint32) (*taskp.Result, error) {
 			pl, decr := posting.GetOrCreate(key, gid)
 
 			val, err := pl.Value()
-			newValue := &taskp.Value{ValType: int32(val.Tid)}
+			newValue := &protos.TaskValue{ValType: int32(val.Tid)}
 			if err == nil {
 				newValue.Val = val.Value.([]byte)
 			} else {
@@ -417,8 +505,65 @@ func processTask(q *taskp.Query, gid uint32) (*taskp.Result, error) {
 			algo.IntersectWith(out.UidMatrix[i], filtered, out.UidMatrix[i])
 		}
 	}
+
+	// For string matching functions, check the language.
+	if len(srcFn.lang) > 0 && (srcFn.fnType == StandardFn ||
+		srcFn.fnType == FullTextSearchFn || srcFn.fnType == CompareAttrFn) {
+		uids := algo.MergeSorted(out.UidMatrix)
+		var values []types.Val
+		for _, uid := range uids.Uids {
+			key := x.DataKey(attr, uid)
+			pl, decr := posting.GetOrCreate(key, gid)
+
+			val, err := pl.ValueForTag(srcFn.lang)
+			if err != nil {
+				decr()
+				continue
+			}
+			// conver data from binary to appropriate format
+			strVal, err := types.Convert(val, types.StringID)
+			if err == nil {
+				values = append(values, strVal)
+			}
+			decr() // Decrement the reference count of the pl.
+		}
+
+		var filtered *protos.List
+		filter := stringFilter{
+			funcName: srcFn.fname,
+			funcType: srcFn.fnType,
+			lang:     srcFn.lang,
+		}
+		if srcFn.fnType != CompareAttrFn {
+			filter.tokens = srcFn.tokens
+			filter.match = defaultMatch
+		} else {
+			filter.ineqValue = srcFn.ineqValue
+			filter.match = ineqMatch
+		}
+		filtered = matchStrings(uids, values, filter)
+		for i := 0; i < len(out.UidMatrix); i++ {
+			algo.IntersectWith(out.UidMatrix[i], filtered, out.UidMatrix[i])
+		}
+	}
+
 	out.IntersectDest = srcFn.intersectDest
 	return &out, nil
+}
+
+func matchRegex(uids *protos.List, values []types.Val, regex *cregexp.Regexp) *protos.List {
+	rv := &protos.List{}
+	for i := 0; i < len(values); i++ {
+		if len(values[i].Value.(string)) == 0 {
+			continue
+		}
+
+		if regex.MatchString(values[i].Value.(string), true, true) > 0 {
+			rv.Uids = append(rv.Uids, uids.Uids[i])
+		}
+	}
+
+	return rv
 }
 
 type functionContext struct {
@@ -430,12 +575,26 @@ type functionContext struct {
 	n               int
 	threshold       int64
 	fname           string
+	lang            string
 	fnType          FuncType
-	regex           *regexp.Regexp
+	regex           *cregexp.Regexp
 	isCompareAtRoot bool
 }
 
-func parseSrcFn(q *taskp.Query) (*functionContext, error) {
+func ensureArgsCount(funcStr []string, expected int) error {
+	actual := len(funcStr) - 2
+	switch {
+	case actual == 0:
+		return x.Errorf("No arguments passed to function '%s'", funcStr[0])
+	case actual != expected:
+		return x.Errorf("Function '%s' requires %d arguments, but got %d (%v)",
+			funcStr[0], expected, actual, funcStr[2:])
+	default:
+		return nil
+	}
+}
+
+func parseSrcFn(q *protos.Query) (*functionContext, error) {
 	fnType, f := parseFuncType(q.SrcFunc)
 	attr := q.Attr
 	fc := &functionContext{fnType: fnType, fname: f}
@@ -456,29 +615,30 @@ func parseSrcFn(q *taskp.Query) (*functionContext, error) {
 		}
 		fc.n = len(q.UidList.Uids)
 	case CompareAttrFn:
-		if len(q.SrcFunc) != 2 {
-			return nil, x.Errorf("Function requires 2 arguments, but got %d %v",
-				len(q.SrcFunc), q.SrcFunc)
-		}
-		fc.ineqValue, err = convertValue(attr, q.SrcFunc[1])
+		err = ensureArgsCount(q.SrcFunc, 1)
 		if err != nil {
 			return nil, err
 		}
-		// Get tokens geq / leq ineqValueToken.
+		fc.ineqValue, err = convertValue(attr, q.SrcFunc[2])
+		if err != nil {
+			return nil, x.Errorf("Got error: %v while running: %v", err.Error(), q.SrcFunc)
+		}
+		// Get tokens ge / le ineqValueToken.
 		fc.tokens, fc.ineqValueToken, err = getInequalityTokens(attr, f, fc.ineqValue)
 		if err != nil {
 			return nil, err
 		}
 		fc.n = len(fc.tokens)
+		fc.lang = q.SrcFunc[1]
 	case CompareScalarFn:
-		if len(q.SrcFunc) != 3 {
-			return nil, x.Errorf("Function requires 3 arguments, but got %d %v",
-				len(q.SrcFunc), q.SrcFunc)
+		err = ensureArgsCount(q.SrcFunc, 2)
+		if err != nil {
+			return nil, err
 		}
-		fc.threshold, err = strconv.ParseInt(q.SrcFunc[2], 10, 64)
+		fc.threshold, err = strconv.ParseInt(q.SrcFunc[3], 10, 64)
 		if err != nil {
 			return nil, x.Wrapf(err, "Compare %v(%v) require digits, but got invalid num",
-				q.SrcFunc[0], q.SrcFunc[1])
+				q.SrcFunc[0], q.SrcFunc[2])
 		}
 		if q.UidList == nil {
 			// Fetch Uids from Store and populate in q.UidList.
@@ -496,26 +656,54 @@ func parseSrcFn(q *taskp.Query) (*functionContext, error) {
 		}
 		fc.n = len(fc.tokens)
 	case PasswordFn:
-		if len(q.SrcFunc) != 3 {
-			return nil, x.Errorf("Function requires 2 arguments, but got %d %v",
-				len(q.SrcFunc)-1, q.SrcFunc[1:])
+		err = ensureArgsCount(q.SrcFunc, 2)
+		if err != nil {
+			return nil, err
 		}
 		fc.n = len(q.UidList.Uids)
 	case StandardFn, FullTextSearchFn:
-		// srcfunc 0th val is func name and and [1:] are args.
+		// srcfunc 0th val is func name and and [2:] are args.
 		// we tokenize the arguments of the query.
-		fc.tokens, err = getStringTokens(q.SrcFunc[1:], "", fnType) // TODO(tzdybal) - get language
+		err = ensureArgsCount(q.SrcFunc, 1)
+		if err != nil {
+			return nil, err
+		}
+		required, found := verifyStringIndex(attr, fnType)
+		if !found {
+			return nil, x.Errorf("Attribute %s is not indexed with type %s", attr, required)
+		}
+		fc.tokens, err = getStringTokens(q.SrcFunc[2:], q.SrcFunc[1], fnType)
 		if err != nil {
 			return nil, err
 		}
 		fnName := strings.ToLower(q.SrcFunc[0])
+		fc.lang = q.SrcFunc[1]
 		fc.intersectDest = strings.HasPrefix(fnName, "allof") // allofterms and alloftext
 		fc.n = len(fc.tokens)
 	case RegexFn:
-		fc.regex, err = regexp.Compile(q.SrcFunc[1])
+		err = ensureArgsCount(q.SrcFunc, 2)
 		if err != nil {
 			return nil, err
 		}
+		ignoreCase := false
+		modifiers := q.SrcFunc[3]
+		if len(modifiers) > 0 {
+			if modifiers == "i" {
+				ignoreCase = true
+			} else {
+				return nil, x.Errorf("Invalid regexp modifier: %s", modifiers)
+			}
+		}
+		matchType := "(?m)" // this is cregexp library specific
+		if ignoreCase {
+			matchType = "(?i)" + matchType
+		}
+		fc.regex, err = cregexp.Compile(matchType + q.SrcFunc[2])
+		if err != nil {
+			return nil, err
+		}
+		fc.n = 0
+		fc.lang = q.SrcFunc[1]
 	default:
 		return nil, x.Errorf("FnType %d not handled in numFnAttrs.", fnType)
 	}
@@ -523,7 +711,7 @@ func parseSrcFn(q *taskp.Query) (*functionContext, error) {
 }
 
 // ServeTask is used to respond to a query.
-func (w *grpcWorker) ServeTask(ctx context.Context, q *taskp.Query) (*taskp.Result, error) {
+func (w *grpcWorker) ServeTask(ctx context.Context, q *protos.Query) (*protos.Result, error) {
 	if ctx.Err() != nil {
 		return &emptyResult, ctx.Err()
 	}
@@ -531,14 +719,14 @@ func (w *grpcWorker) ServeTask(ctx context.Context, q *taskp.Query) (*taskp.Resu
 	gid := group.BelongsTo(q.Attr)
 	x.Trace(ctx, "Attribute: %q NumUids: %v groupId: %v ServeTask", q.Attr, len(q.UidList.Uids), gid)
 
-	var reply *taskp.Result
+	var reply *protos.Result
 	x.AssertTruef(groups().ServesGroup(gid),
 		"attr: %q groupId: %v Request sent to wrong server.", q.Attr, gid)
 
 	c := make(chan error, 1)
 	go func() {
 		var err error
-		reply, err = processTask(q, gid)
+		reply, err = processTask(ctx, q, gid)
 		c <- err
 	}()
 
@@ -553,13 +741,13 @@ func (w *grpcWorker) ServeTask(ctx context.Context, q *taskp.Query) (*taskp.Resu
 // applyFacetsTree : we return error only when query has some problems.
 // like Or has 3 arguments, argument facet val overflows integer.
 // returns true if postingFacets can be included.
-func applyFacetsTree(postingFacets []*facetsp.Facet, ftree *facetsTree) (bool, error) {
+func applyFacetsTree(postingFacets []*protos.Facet, ftree *facetsTree) (bool, error) {
 	if ftree == nil {
 		return true, nil
 	}
 	if ftree.function != nil {
 		fname := strings.ToLower(ftree.function.name)
-		var fc *facetsp.Facet
+		var fc *protos.Facet
 		for _, fci := range postingFacets {
 			if fci.Key == ftree.function.key {
 				fc = fci
@@ -572,7 +760,18 @@ func applyFacetsTree(postingFacets []*facetsp.Facet, ftree *facetsTree) (bool, e
 		fnType, fname := parseFuncType([]string{fname})
 		switch fnType {
 		case CompareAttrFn: // lt, gt, le, ge, eq
-			return compareTypeVals(fname, facets.ValFor(fc), ftree.function.val), nil
+			var err error
+			typId := facets.TypeIDFor(fc)
+			v, has := ftree.function.convertedVal[typId]
+			if !has {
+				if v, err = types.Convert(ftree.function.val, typId); err != nil {
+					// ignore facet if not of appropriate type
+					return false, nil
+				} else {
+					ftree.function.convertedVal[typId] = v
+				}
+			}
+			return types.CompareVals(fname, facets.ValFor(fc), v), nil
 
 		case StandardFn: // allofterms, anyofterms
 			if facets.TypeIDForValType(fc.ValType) != facets.StringID {
@@ -602,33 +801,6 @@ func applyFacetsTree(postingFacets []*facetsp.Facet, ftree *facetsTree) (bool, e
 		return res[0] || res[1], nil
 	}
 	return false, x.Errorf("Unexpected behavior in applyFacetsTree.")
-}
-
-// Should be used only in filtering arg1 by comparing with arg2.
-// arg2 is reference Val to which arg1 is compared.
-func compareTypeVals(op string, arg1, arg2 types.Val) bool {
-	revRes := func(b bool, e error) (bool, error) { // reverses result
-		return !b, e
-	}
-	noError := func(b bool, e error) bool {
-		return b && e == nil
-	}
-	switch op {
-	case "geq":
-		return noError(revRes(types.Less(arg1, arg2)))
-	case "gt":
-		return noError(types.Less(arg2, arg1))
-	case "leq":
-		return noError(revRes(types.Less(arg2, arg1)))
-	case "lt":
-		return noError(types.Less(arg1, arg2))
-	case "eq":
-		return noError(types.Equal(arg1, arg2))
-	default:
-		// should have been checked at query level.
-		x.Fatalf("Unknown ineqType %v", op)
-	}
-	return false
 }
 
 // filterOnStandardFn : tells whether facet corresponding to fcTokens can be taken or not.
@@ -675,6 +847,8 @@ type facetsFunc struct {
 	args   []string
 	tokens []string
 	val    types.Val
+	// convertedVal is used to cache the converted value of val for each type
+	convertedVal map[types.TypeID]types.Val
 }
 type facetsTree struct {
 	op       string
@@ -682,7 +856,7 @@ type facetsTree struct {
 	function *facetsFunc
 }
 
-func preprocessFilter(tree *facetsp.FilterTree) (*facetsTree, error) {
+func preprocessFilter(tree *protos.FilterTree) (*facetsTree, error) {
 	if tree == nil {
 		return nil, nil
 	}
@@ -690,6 +864,7 @@ func preprocessFilter(tree *facetsp.FilterTree) (*facetsTree, error) {
 	ftree.op = tree.Op
 	if tree.Func != nil {
 		ftree.function = &facetsFunc{}
+		ftree.function.convertedVal = make(map[types.TypeID]types.Val)
 		ftree.function.name = tree.Func.Name
 		ftree.function.key = tree.Func.Key
 		ftree.function.args = tree.Func.Args
@@ -702,11 +877,7 @@ func preprocessFilter(tree *facetsp.FilterTree) (*facetsTree, error) {
 
 		switch fnType {
 		case CompareAttrFn:
-			argf, err := facets.FacetFor(tree.Func.Key, tree.Func.Args[0])
-			if err != nil {
-				return nil, err // stop processing as this is query error
-			}
-			ftree.function.val = facets.ValFor(argf)
+			ftree.function.val = types.Val{Tid: types.StringID, Value: []byte(tree.Func.Args[0])}
 		case StandardFn:
 			argTokens, aerr := tok.GetTokens(tree.Func.Args)
 			if aerr != nil { // query error ; stop processing.
@@ -746,4 +917,60 @@ func preprocessFilter(tree *facetsp.FilterTree) (*facetsTree, error) {
 		return nil, x.Errorf("Unsupported operation in facet filtering: %s.", tree.Op)
 	}
 	return ftree, nil
+}
+
+type itkv struct {
+	key []byte
+	val []byte
+}
+
+func iterateParallel(ctx context.Context, q *protos.Query, f func([]byte, []byte, *sync.Mutex)) {
+	grpSize := uint64(math.MaxUint64 / uint64(numPart))
+	var wg sync.WaitGroup
+	mu := &sync.Mutex{}
+
+	for i := uint64(0); i < numPart; i++ {
+		minUid := grpSize*i + 1
+		maxUid := grpSize * (i + 1)
+		if i == numPart-1 {
+			maxUid = math.MaxUint64
+		}
+		x.Trace(ctx, "Running go-routine %v for iteration", i)
+		wg.Add(1)
+		go func(i uint64) {
+			it := pstore.NewIterator(badger.DefaultIteratorOptions)
+			defer it.Close()
+			startKey := x.DataKey(q.Attr, minUid)
+			pk := x.Parse(startKey)
+			prefix := pk.DataPrefix()
+			if q.Reverse {
+				startKey = x.ReverseKey(q.Attr, minUid)
+				pk = x.Parse(startKey)
+				prefix = pk.ReversePrefix()
+			}
+
+			w := 0
+			for it.Seek(startKey); it.Valid(); it.Next() {
+				iterItem := it.Item()
+				key := iterItem.Key()
+				if !bytes.HasPrefix(key, prefix) {
+					break
+				}
+				pk := x.Parse(key)
+				x.AssertTruef(pk.Attr == q.Attr,
+					"Invalid key obtained for comparison")
+				if w%1000 == 0 {
+					x.Trace(ctx, "iterateParallel: go-routine-id: %v key: %v:%v", i, pk.Attr, pk.Uid)
+				}
+				w++
+				if pk.Uid > maxUid {
+					break
+				}
+				val := iterItem.Value()
+				f(key, val, mu)
+			}
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
 }

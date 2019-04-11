@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package worker
 
 import (
@@ -8,8 +25,8 @@ import (
 	"log"
 	"sync"
 
-	"github.com/dgraph-io/dgraph/protos/workerp"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/x"
 
 	"google.golang.org/grpc"
 )
@@ -69,14 +86,14 @@ func (p *poolsi) connect(addr string) {
 	}
 
 	pool := newPool(addr, 5)
-	query := new(workerp.Payload)
+	query := new(protos.Payload)
 	query.Data = make([]byte, 10)
 	x.Check2(rand.Read(query.Data))
 
 	conn, err := pool.Get()
 	x.Checkf(err, "Unable to connect")
 
-	c := workerp.NewWorkerClient(conn)
+	c := protos.NewWorkerClient(conn)
 	resp, err := c.Echo(context.Background(), query)
 	if err != nil {
 		log.Printf("While trying to connect to %q, got error: %v\n", addr, err)

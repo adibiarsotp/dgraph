@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package worker
 
 import (
@@ -5,12 +22,11 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/dgraph-io/dgraph/group"
-	"github.com/dgraph-io/dgraph/posting"
-	"github.com/dgraph-io/dgraph/protos/taskp"
-	"github.com/dgraph-io/dgraph/protos/workerp"
-	"github.com/dgraph-io/dgraph/schema"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/group"
+	"github.com/adibiarsotp/dgraph/posting"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/schema"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 func (n *node) rebuildOrDelIndex(ctx context.Context, attr string, indexed bool) error {
@@ -63,7 +79,7 @@ func (n *node) rebuildOrDelRevEdge(ctx context.Context, attr string, reversed bo
 // rebuildIndex is called by node.Run to rebuild index.
 func (n *node) rebuildIndex(ctx context.Context, proposalData []byte) error {
 	x.AssertTrue(proposalData[0] == proposalReindex)
-	var proposal taskp.Proposal
+	var proposal protos.Proposal
 	x.Check(proposal.Unmarshal(proposalData[1:]))
 	x.AssertTrue(proposal.RebuildIndex != nil)
 
@@ -132,23 +148,23 @@ func waitForSyncMark(ctx context.Context, gid uint32, lastIndex uint64) {
 
 // RebuildIndex request is used to trigger rebuilding of index for the requested
 // attribute. Payload is not really used.
-func (w *grpcWorker) RebuildIndex(ctx context.Context, req *taskp.RebuildIndex) (*workerp.Payload, error) {
+func (w *grpcWorker) RebuildIndex(ctx context.Context, req *protos.RebuildIndexMessage) (*protos.Payload, error) {
 	if ctx.Err() != nil {
-		return &workerp.Payload{}, ctx.Err()
+		return &protos.Payload{}, ctx.Err()
 	}
 	if !schema.State().IsIndexed(req.Attr) {
-		return &workerp.Payload{}, x.Errorf("Attribute %s is not indexed", req.Attr)
+		return &protos.Payload{}, x.Errorf("Attribute %s is not indexed", req.Attr)
 	}
 	if err := proposeRebuildIndex(ctx, req); err != nil {
-		return &workerp.Payload{}, err
+		return &protos.Payload{}, err
 	}
-	return &workerp.Payload{}, nil
+	return &protos.Payload{}, nil
 }
 
-func proposeRebuildIndex(ctx context.Context, ri *taskp.RebuildIndex) error {
+func proposeRebuildIndex(ctx context.Context, ri *protos.RebuildIndexMessage) error {
 	gid := ri.GroupId
 	n := groups().Node(gid)
-	proposal := &taskp.Proposal{RebuildIndex: ri}
+	proposal := &protos.Proposal{RebuildIndex: ri}
 	if err := n.ProposeAndWait(ctx, proposal); err != nil {
 		return err
 	}
@@ -166,7 +182,7 @@ func RebuildIndexOverNetwork(ctx context.Context, attr string) error {
 		return x.Errorf("Attribute %s is not indexed", attr)
 	} else if groups().ServesGroup(gid) {
 		// No need for a network call, as this should be run from within this instance.
-		return proposeRebuildIndex(ctx, &taskp.RebuildIndex{GroupId: gid, Attr: attr})
+		return proposeRebuildIndex(ctx, &protos.RebuildIndexMessage{GroupId: gid, Attr: attr})
 	}
 
 	// Send this over the network.
@@ -180,8 +196,8 @@ func RebuildIndexOverNetwork(ctx context.Context, attr string) error {
 	defer pl.Put(conn)
 	x.Trace(ctx, "Sending request to %v", addr)
 
-	c := workerp.NewWorkerClient(conn)
-	_, err = c.RebuildIndex(ctx, &taskp.RebuildIndex{Attr: attr, GroupId: gid})
+	c := protos.NewWorkerClient(conn)
+	_, err = c.RebuildIndex(ctx, &protos.RebuildIndexMessage{Attr: attr, GroupId: gid})
 	if err != nil {
 		x.TraceError(ctx, x.Wrapf(err, "Error while calling Worker.RebuildIndex"))
 		return err

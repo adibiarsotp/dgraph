@@ -8,8 +8,6 @@ if [ -z "$1" ]; then
   BUILD=$SRC/build
 fi
 
-ROCKSDBDIR=$BUILD/rocksdb-5.1.4
-
 set -e
 
 pushd $BUILD &> /dev/null
@@ -24,11 +22,6 @@ ls -la goldendata.rdf.gz
 benchmark=$(pwd)
 popd &> /dev/null
 
-# build flags needed for rocksdb
-export CGO_CPPFLAGS="-I${ROCKSDBDIR}/include"
-export CGO_LDFLAGS="-L${ROCKSDBDIR}"
-export LD_LIBRARY_PATH="${ROCKSDBDIR}:${LD_LIBRARY_PATH}"
-
 pushd cmd/dgraph &> /dev/null
 go build .
 ./dgraph -gentlecommit 1.0 &
@@ -39,8 +32,8 @@ sleep 15
 #Set Schema
 curl -X POST  -d 'mutation {
   schema {
-	  name: string @index
-	  initial_release_date: date @index
+	  name: string @index .
+	  initial_release_date: date @index .
 	}
 }' "http://localhost:8080/query"
 
@@ -52,7 +45,7 @@ popd &> /dev/null
 # Lets wait for stuff to be committed to RocksDB.
 sleep 20
 
-pushd $GOPATH/src/github.com/dgraph-io/dgraph/contrib/indextest &> /dev/null
+pushd $GOPATH/src/github.com/adibiarsotp/dgraph/contrib/indextest &> /dev/null
 
 function run_index_test {
 	X=$1

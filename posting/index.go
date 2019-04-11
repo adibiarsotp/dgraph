@@ -1,35 +1,38 @@
 /*
- * Copyright 2016 Dgraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package posting
 
 import (
+	"bytes"
 	"context"
 	"math"
 
 	"golang.org/x/net/trace"
 
+	"github.com/dgraph-io/badger/badger"
 	"github.com/dgryski/go-farm"
 
-	"github.com/dgraph-io/dgraph/group"
-	"github.com/dgraph-io/dgraph/protos/taskp"
-	"github.com/dgraph-io/dgraph/protos/typesp"
-	"github.com/dgraph-io/dgraph/schema"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/group"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/schema"
+	"github.com/adibiarsotp/dgraph/tok"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 const maxBatchSize = 32 * (1 << 20)
@@ -45,7 +48,7 @@ func init() {
 }
 
 // IndexTokens return tokens, without the predicate prefix and index rune.
-func IndexTokens(attr string, src types.Val) ([]string, error) {
+func IndexTokens(attr, lang string, src types.Val) ([]string, error) {
 	schemaType, err := schema.State().TypeOf(attr)
 	if err != nil || !schemaType.IsScalar() {
 		return nil, x.Errorf("Cannot index attribute %s of type object.", attr)
@@ -63,29 +66,39 @@ func IndexTokens(attr string, src types.Val) ([]string, error) {
 	var tokens []string
 	tokenizers := schema.State().Tokenizer(attr)
 	for _, it := range tokenizers {
+		if tok.FtsTokenizerName("") == it.Name() && len(lang) > 0 {
+			newTokenizer, ok := tok.GetTokenizer(tok.FtsTokenizerName(lang))
+			if ok {
+				it = newTokenizer
+			} else {
+				return nil, x.Errorf("Tokenizer not available for language: %s", lang)
+			}
+		}
 		toks, err := it.Tokens(sv)
 		if err != nil {
 			return tokens, err
 		}
 		tokens = append(tokens, toks...)
 	}
+
 	return tokens, nil
 }
 
 // addIndexMutations adds mutation(s) for a single term, to maintain index.
 // t represents the original uid -> value edge.
-func addIndexMutations(ctx context.Context, t *taskp.DirectedEdge, p types.Val, op taskp.DirectedEdge_Op) {
+func addIndexMutations(ctx context.Context, t *protos.DirectedEdge, p types.Val,
+	op protos.DirectedEdge_Op) error {
 	attr := t.Attr
 	uid := t.Entity
 	x.AssertTrue(uid != 0)
-	tokens, err := IndexTokens(attr, p)
+	tokens, err := IndexTokens(attr, t.GetLang(), p)
 	if err != nil {
 		// This data is not indexable
-		return
+		return err
 	}
 
 	// Create a value token -> uid edge.
-	edge := &taskp.DirectedEdge{
+	edge := &protos.DirectedEdge{
 		ValueId: uid,
 		Attr:    attr,
 		Label:   "idx",
@@ -93,11 +106,15 @@ func addIndexMutations(ctx context.Context, t *taskp.DirectedEdge, p types.Val, 
 	}
 
 	for _, token := range tokens {
-		addIndexMutation(ctx, edge, token)
+		if err := addIndexMutation(ctx, edge, token); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-func addIndexMutation(ctx context.Context, edge *taskp.DirectedEdge, token string) {
+func addIndexMutation(ctx context.Context, edge *protos.DirectedEdge,
+	token string) error {
 	key := x.IndexKey(edge.Attr, token)
 
 	var groupId uint32
@@ -118,12 +135,14 @@ func addIndexMutation(ctx context.Context, edge *taskp.DirectedEdge, token strin
 		x.TraceError(ctx, x.Wrapf(err,
 			"Error adding/deleting %s for attr %s entity %d: %v",
 			token, edge.Attr, edge.Entity))
+		return err
 	}
 	indexLog.Printf("%s [%s] [%d] Term [%s]",
 		edge.Op, edge.Attr, edge.Entity, token)
+	return nil
 }
 
-func addReverseMutation(ctx context.Context, t *taskp.DirectedEdge) {
+func addReverseMutation(ctx context.Context, t *protos.DirectedEdge) error {
 	key := x.ReverseKey(t.Attr, t.ValueId)
 	groupId := group.BelongsTo(t.Attr)
 
@@ -132,7 +151,7 @@ func addReverseMutation(ctx context.Context, t *taskp.DirectedEdge) {
 
 	x.AssertTruef(plist != nil, "plist is nil [%s] %d %d",
 		t.Attr, t.Entity, t.ValueId)
-	edge := &taskp.DirectedEdge{
+	edge := &protos.DirectedEdge{
 		Entity:  t.ValueId,
 		ValueId: t.Entity,
 		Attr:    t.Attr,
@@ -146,13 +165,42 @@ func addReverseMutation(ctx context.Context, t *taskp.DirectedEdge) {
 		x.TraceError(ctx, x.Wrapf(err,
 			"Error adding/deleting reverse edge for attr %s src %d dst %d",
 			t.Attr, t.Entity, t.ValueId))
+		return err
 	}
 	reverseLog.Printf("%s [%s] [%d] [%d]", t.Op, t.Attr, t.Entity, t.ValueId)
+	return nil
+}
+func (l *List) handleDeleteAll(ctx context.Context, t *protos.DirectedEdge) error {
+	isReversed := schema.State().IsReversed(t.Attr)
+	isIndexed := schema.State().IsIndexed(t.Attr)
+	delEdge := &protos.DirectedEdge{
+		Attr: t.Attr,
+		Op:   t.Op,
+	}
+	l.Iterate(0, func(p *protos.Posting) bool {
+		if isReversed {
+			// Delete reverse edge for each posting.
+			delEdge.ValueId = p.Uid
+			addReverseMutation(ctx, delEdge)
+			return true
+		} else if isIndexed {
+			// Delete index edge of each posting.
+			p := types.Val{
+				Tid:   types.TypeID(p.ValType),
+				Value: p.Value,
+			}
+			addIndexMutations(ctx, t, p, protos.DirectedEdge_DEL)
+		}
+		return true
+	})
+	l.Lock()
+	defer l.Unlock()
+	return l.delete(ctx, t)
 }
 
 // AddMutationWithIndex is AddMutation with support for indexing. It also
 // supports reverse edges.
-func (l *List) AddMutationWithIndex(ctx context.Context, t *taskp.DirectedEdge) error {
+func (l *List) AddMutationWithIndex(ctx context.Context, t *protos.DirectedEdge) error {
 	x.AssertTruef(len(t.Attr) > 0,
 		"[%s] [%d] [%v] %d %d\n", t.Attr, t.Entity, t.Value, t.ValueId, t.Op)
 
@@ -162,15 +210,19 @@ func (l *List) AddMutationWithIndex(ctx context.Context, t *taskp.DirectedEdge) 
 	l.index.Lock()
 	defer l.index.Unlock()
 
+	if t.Op == protos.DirectedEdge_DEL && string(t.Value) == x.DeleteAllObjects {
+		return l.handleDeleteAll(ctx, t)
+	}
+
 	doUpdateIndex := pstore != nil && (t.Value != nil) && schema.State().IsIndexed(t.Attr)
 	{
 		l.Lock()
 		if doUpdateIndex {
 			// Check original value BEFORE any mutation actually happens.
 			if len(t.Lang) > 0 {
-				found, val = l.findValue(farm.Fingerprint64([]byte(t.Lang)))
+				val, found = l.findValue(farm.Fingerprint64([]byte(t.Lang)))
 			} else {
-				found, val = l.findValue(math.MaxUint64)
+				val, found = l.findValue(math.MaxUint64)
 			}
 		}
 		_, err := l.addMutation(ctx, t)
@@ -185,14 +237,14 @@ func (l *List) AddMutationWithIndex(ctx context.Context, t *taskp.DirectedEdge) 
 	if doUpdateIndex {
 		// Exact matches.
 		if found && val.Value != nil {
-			addIndexMutations(ctx, t, val, taskp.DirectedEdge_DEL)
+			addIndexMutations(ctx, t, val, protos.DirectedEdge_DEL)
 		}
-		if t.Op == taskp.DirectedEdge_SET {
+		if t.Op == protos.DirectedEdge_SET {
 			p := types.Val{
 				Tid:   types.TypeID(t.ValueType),
 				Value: t.Value,
 			}
-			addIndexMutations(ctx, t, p, taskp.DirectedEdge_SET)
+			addIndexMutations(ctx, t, p, protos.DirectedEdge_SET)
 		}
 	}
 	// Add reverse mutation irrespective of hashMutated, server crash can happen after
@@ -207,35 +259,34 @@ func DeleteReverseEdges(ctx context.Context, attr string) error {
 	// Delete index entries from data store.
 	pk := x.ParsedKey{Attr: attr}
 	prefix := pk.ReversePrefix()
-	idxIt := pstore.NewIterator()
+	iterOpt := badger.DefaultIteratorOptions
+	iterOpt.FetchValues = false
+	idxIt := pstore.NewIterator(iterOpt)
 	defer idxIt.Close()
 
-	wb := pstore.NewWriteBatch()
-	defer wb.Destroy()
+	wb := make([]*badger.Entry, 0, 100)
 	var batchSize int
-	for idxIt.Seek(prefix); idxIt.ValidForPrefix(prefix); idxIt.Next() {
-		key := idxIt.Key().Data()
+	for idxIt.Seek(prefix); idxIt.Valid(); idxIt.Next() {
+		key := idxIt.Item().Key()
+		if !bytes.HasPrefix(key, prefix) {
+			break
+		}
 		batchSize += len(key)
-		wb.Delete(key)
+		wb = badger.EntriesDelete(wb, key)
 
 		if batchSize >= maxBatchSize {
-			if err := pstore.WriteBatch(wb); err != nil {
-				return err
-			}
-			wb.Clear()
+			pstore.BatchSet(wb)
+			wb = wb[:0]
 			batchSize = 0
 		}
 	}
-	if wb.Count() > 0 {
-		if err := pstore.WriteBatch(wb); err != nil {
-			return err
-		}
-		wb.Clear()
+	if len(wb) > 0 {
+		pstore.BatchSet(wb)
 	}
 	return nil
 }
 
-// RebuildIndex rebuilds index for a given attribute.
+// RebuildReverseEdges rebuilds the reverse edges for a given attribute.
 func RebuildReverseEdges(ctx context.Context, attr string) error {
 	x.AssertTruef(schema.State().IsReversed(attr), "Attr %s doesn't have reverse", attr)
 	if err := DeleteReverseEdges(ctx, attr); err != nil {
@@ -244,35 +295,76 @@ func RebuildReverseEdges(ctx context.Context, attr string) error {
 
 	// Add index entries to data store.
 	pk := x.ParsedKey{Attr: attr}
-	edge := taskp.DirectedEdge{Attr: attr}
 	prefix := pk.DataPrefix()
-	it := pstore.NewIterator()
+	it := pstore.NewIterator(badger.DefaultIteratorOptions)
 	defer it.Close()
 
 	EvictGroup(group.BelongsTo(attr))
 	// Helper function - Add reverse entries for values in posting list
-	addReversePostings := func(pl *typesp.PostingList) {
+	addReversePostings := func(uid uint64, pl *protos.PostingList) error {
 		postingsLen := len(pl.Postings)
+		edge := protos.DirectedEdge{Attr: attr, Entity: uid}
 		for idx := 0; idx < postingsLen; idx++ {
 			p := pl.Postings[idx]
 			// Add reverse entries based on p.
 			edge.ValueId = p.Uid
-			edge.Op = taskp.DirectedEdge_SET
+			edge.Op = protos.DirectedEdge_SET
 			edge.Facets = p.Facets
 			edge.Label = p.Label
-			addReverseMutation(ctx, &edge)
+			err := addReverseMutation(ctx, &edge)
+			// We retry once in case we do GetOrCreate and stop the world happens
+			// before we do addmutation
+			if err == ErrRetry {
+				err = addReverseMutation(ctx, &edge)
+			}
+			if err != nil {
+				return err
+			}
 		}
+		return nil
 	}
 
-	for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-		pki := x.Parse(it.Key().Data())
-		edge.Entity = pki.Uid
-		var pl typesp.PostingList
-		x.Check(pl.Unmarshal(it.Value().Data()))
+	type item struct {
+		uid  uint64
+		list *protos.PostingList
+	}
+	ch := make(chan item, 10000)
+	che := make(chan error, 1000)
+	for i := 0; i < 1000; i++ {
+		go func() {
+			var err error
+			for it := range ch {
+				err = addReversePostings(it.uid, it.list)
+				if err != nil {
+					break
+				}
+			}
+			che <- err
+		}()
+	}
+
+	for it.Seek(prefix); it.Valid(); it.Next() {
+		iterItem := it.Item()
+		key := iterItem.Key()
+		if !bytes.HasPrefix(key, prefix) {
+			break
+		}
+		pki := x.Parse(key)
+		var pl protos.PostingList
+		x.Check(pl.Unmarshal(iterItem.Value()))
 
 		// Posting list contains only values or only UIDs.
 		if len(pl.Postings) != 0 && postingType(pl.Postings[0]) == x.ValueUid {
-			addReversePostings(&pl)
+			ch <- item{
+				uid:  pki.Uid,
+				list: &pl,
+			}
+		}
+	}
+	close(ch)
+	for i := 0; i < 1000; i++ {
+		if err := <-che; err != nil {
+			return err
 		}
 	}
 	return nil
@@ -282,30 +374,29 @@ func DeleteIndex(ctx context.Context, attr string) error {
 	// Delete index entries from data store.
 	pk := x.ParsedKey{Attr: attr}
 	prefix := pk.IndexPrefix()
-	idxIt := pstore.NewIterator()
+	iterOpt := badger.DefaultIteratorOptions
+	iterOpt.FetchValues = false
+	idxIt := pstore.NewIterator(iterOpt)
 	defer idxIt.Close()
 
-	wb := pstore.NewWriteBatch()
-	defer wb.Destroy()
+	wb := make([]*badger.Entry, 0, 100)
 	var batchSize int
-	for idxIt.Seek(prefix); idxIt.ValidForPrefix(prefix); idxIt.Next() {
-		key := idxIt.Key().Data()
+	for idxIt.Seek(prefix); idxIt.Valid(); idxIt.Next() {
+		key := idxIt.Item().Key()
+		if !bytes.HasPrefix(key, prefix) {
+			break
+		}
 		batchSize += len(key)
-		wb.Delete(key)
+		wb = badger.EntriesDelete(wb, key)
 
 		if batchSize >= maxBatchSize {
-			if err := pstore.WriteBatch(wb); err != nil {
-				return err
-			}
-			wb.Clear()
+			pstore.BatchSet(wb)
+			wb = wb[:0]
 			batchSize = 0
 		}
 	}
-	if wb.Count() > 0 {
-		if err := pstore.WriteBatch(wb); err != nil {
-			return err
-		}
-		wb.Clear()
+	if len(wb) > 0 {
+		pstore.BatchSet(wb)
 	}
 	return nil
 }
@@ -319,15 +410,15 @@ func RebuildIndex(ctx context.Context, attr string) error {
 
 	// Add index entries to data store.
 	pk := x.ParsedKey{Attr: attr}
-	edge := taskp.DirectedEdge{Attr: attr}
 	prefix := pk.DataPrefix()
-	it := pstore.NewIterator()
+	it := pstore.NewIterator(badger.DefaultIteratorOptions)
 	defer it.Close()
 
 	EvictGroup(group.BelongsTo(attr))
 	// Helper function - Add index entries for values in posting list
-	addPostingsToIndex := func(pl *typesp.PostingList) {
+	addPostingsToIndex := func(uid uint64, pl *protos.PostingList) error {
 		postingsLen := len(pl.Postings)
+		edge := protos.DirectedEdge{Attr: attr, Entity: uid}
 		for idx := 0; idx < postingsLen; idx++ {
 			p := pl.Postings[idx]
 			// Add index entries based on p.
@@ -335,19 +426,60 @@ func RebuildIndex(ctx context.Context, attr string) error {
 				Value: p.Value,
 				Tid:   types.TypeID(p.ValType),
 			}
-			addIndexMutations(ctx, &edge, val, taskp.DirectedEdge_SET)
+			err := addIndexMutations(ctx, &edge, val, protos.DirectedEdge_SET)
+			// We retry once in case we do GetOrCreate and stop the world happens
+			// before we do addmutation
+			if err == ErrRetry {
+				err = addIndexMutations(ctx, &edge, val, protos.DirectedEdge_SET)
+			}
+			if err != nil {
+				return err
+			}
 		}
+		return nil
 	}
 
-	for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-		pki := x.Parse(it.Key().Data())
-		edge.Entity = pki.Uid
-		var pl typesp.PostingList
-		x.Check(pl.Unmarshal(it.Value().Data()))
+	type item struct {
+		uid  uint64
+		list *protos.PostingList
+	}
+	ch := make(chan item, 10000)
+	che := make(chan error, 1000)
+	for i := 0; i < 1000; i++ {
+		go func() {
+			var err error
+			for it := range ch {
+				err = addPostingsToIndex(it.uid, it.list)
+				if err != nil {
+					break
+				}
+			}
+			che <- err
+		}()
+	}
+
+	for it.Seek(prefix); it.Valid(); it.Next() {
+		iterItem := it.Item()
+		key := iterItem.Key()
+		if !bytes.HasPrefix(key, prefix) {
+			break
+		}
+		pki := x.Parse(key)
+		var pl protos.PostingList
+		x.Check(pl.Unmarshal(iterItem.Value()))
 
 		// Posting list contains only values or only UIDs.
 		if len(pl.Postings) != 0 && postingType(pl.Postings[0]) != x.ValueUid {
-			addPostingsToIndex(&pl)
+			ch <- item{
+				uid:  pki.Uid,
+				list: &pl,
+			}
+		}
+	}
+	close(ch)
+	for i := 0; i < 1000; i++ {
+		if err := <-che; err != nil {
+			return err
 		}
 	}
 	return nil

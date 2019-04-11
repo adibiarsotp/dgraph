@@ -1,17 +1,18 @@
 /*
- * Copyright 2015 DGraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package main
@@ -28,16 +29,16 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/dgraph/gql"
-	"github.com/dgraph-io/dgraph/group"
-	"github.com/dgraph-io/dgraph/posting"
-	"github.com/dgraph-io/dgraph/protos/typesp"
-	"github.com/dgraph-io/dgraph/query"
-	"github.com/dgraph-io/dgraph/schema"
-	"github.com/dgraph-io/dgraph/store"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/worker"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/dgraph-io/badger/badger"
+	"github.com/adibiarsotp/dgraph/gql"
+	"github.com/adibiarsotp/dgraph/group"
+	"github.com/adibiarsotp/dgraph/posting"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/query"
+	"github.com/adibiarsotp/dgraph/schema"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/worker"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 var q0 = `
@@ -56,16 +57,16 @@ var m = `
 	}
 `
 
-func prepare() (dir1, dir2 string, ps *store.Store, rerr error) {
+func prepare() (dir1, dir2 string, ps *badger.KV, rerr error) {
 	var err error
 	dir1, err = ioutil.TempDir("", "storetest_")
 	if err != nil {
 		return "", "", nil, err
 	}
-	ps, err = store.NewStore(dir1)
-	if err != nil {
-		return "", "", nil, err
-	}
+	opt := badger.DefaultOptions
+	opt.Dir = dir1
+	ps, err = badger.NewKV(&opt)
+	x.Check(err)
 
 	dir2, err = ioutil.TempDir("", "wal_")
 	if err != nil {
@@ -75,6 +76,7 @@ func prepare() (dir1, dir2 string, ps *store.Store, rerr error) {
 	posting.Init(ps)
 	group.ParseGroupConfig("groups.conf")
 	schema.Init(ps)
+	worker.Init(ps)
 	worker.StartRaftNodes(dir2)
 
 	return dir1, dir2, ps, nil
@@ -94,7 +96,7 @@ func childAttrs(sg *query.SubGraph) []string {
 }
 
 func processToFastJSON(q string) string {
-	res, err := gql.Parse(q)
+	res, err := gql.Parse(gql.Request{Str: q, Http: true})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -108,7 +110,7 @@ func processToFastJSON(q string) string {
 	}
 
 	var buf bytes.Buffer
-	err = query.ToJson(&l, sgl, &buf, nil)
+	err = query.ToJson(&l, sgl, &buf, nil, false)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -116,7 +118,7 @@ func processToFastJSON(q string) string {
 }
 
 func runQuery(q string) (string, error) {
-	res, err := gql.Parse(q)
+	res, err := gql.Parse(gql.Request{Str: q, Http: true})
 	if err != nil {
 		return "", err
 	}
@@ -130,7 +132,7 @@ func runQuery(q string) (string, error) {
 	}
 
 	var buf bytes.Buffer
-	err = query.ToJson(&l, sgl, &buf, nil)
+	err = query.ToJson(&l, sgl, &buf, nil, false)
 	if err != nil {
 		return "", err
 	}
@@ -138,7 +140,7 @@ func runQuery(q string) (string, error) {
 }
 
 func runMutation(m string) error {
-	res, err := gql.Parse(m)
+	res, err := gql.Parse(gql.Request{Str: m, Http: true})
 	if err != nil {
 		return err
 	}
@@ -152,28 +154,28 @@ func TestSchemaMutation(t *testing.T) {
 	var m = `
 	mutation {
 		schema {
-            name:string @index(term, exact)
-			alias:string @index(exact, term)
-			dob:date @index
-			film.film.initial_release_date:date @index
-			loc:geo @index
-			genre:uid @reverse
-			survival_rate : float
-			alive         : bool
-			age           : int
-			shadow_deep   : int
-			friend:uid @reverse
-			geometry:geo @index
+            name:string @index(term, exact) .
+			alias:string @index(exact, term) .
+			dob:date @index .
+			film.film.initial_release_date:date @index .
+			loc:geo @index .
+			genre:uid @reverse .
+			survival_rate : float .
+			alive         : bool .
+			age           : int .
+			shadow_deep   : int .
+			friend:uid @reverse .
+			geometry:geo @index .
 		}
 	}
 
 ` // reset schema
 	schema.ParseBytes([]byte(""), 1)
-	expected := map[string]*typesp.Schema{
+	expected := map[string]*protos.SchemaUpdate{
 		"name": {
 			Tokenizer: []string{"term", "exact"},
 			ValueType: uint32(types.StringID),
-			Directive: typesp.Schema_INDEX},
+			Directive: protos.SchemaUpdate_INDEX},
 	}
 
 	err := runMutation(m)
@@ -190,7 +192,7 @@ func TestSchemaMutation2Error(t *testing.T) {
 	var m = `
 	mutation {
 		schema {
-            age:string @reverse
+            age:string @reverse .
 		}
 	}
 	`
@@ -204,7 +206,7 @@ func TestSchemaMutation3Error(t *testing.T) {
 	var m = `
 	mutation {
 		schema {
-            age:uid @index
+            age:uid @index .
 		}
 	}
 	`
@@ -217,7 +219,7 @@ func TestSchemaMutation4Error(t *testing.T) {
 	var m = `
 	mutation {
 		schema {
-            age:uid
+            age:uid .
 		}
 	}
 	`
@@ -229,7 +231,7 @@ func TestSchemaMutation4Error(t *testing.T) {
 	m = `
 	mutation {
 		schema {
-            age:string
+            age:string .
 		}
 	}
 	`
@@ -242,7 +244,7 @@ func TestSchemaMutation5Error(t *testing.T) {
 	var m = `
 	mutation {
 		schema {
-            age:string
+            age:string .
 		}
 	}
 	`
@@ -254,7 +256,7 @@ func TestSchemaMutation5Error(t *testing.T) {
 	m = `
 	mutation {
 		schema {
-            age:uid
+            age:uid .
 		}
 	}
 	`
@@ -283,7 +285,7 @@ func TestSchemaMutationIndexAdd(t *testing.T) {
 	var s = `
 	mutation {
 		schema {
-            name:string @index
+            name:string @index .
 		}
 	}
 	`
@@ -324,14 +326,14 @@ func TestSchemaMutationIndexRemove(t *testing.T) {
 	var s1 = `
 	mutation {
 		schema {
-            name:string @index
+            name:string @index .
 		}
 	}
 	`
 	var s2 = `
 	mutation {
 		schema {
-            name:string
+            name:string .
 		}
 	}
 	`
@@ -381,7 +383,7 @@ func TestSchemaMutationReverseAdd(t *testing.T) {
 	var s = `
 	mutation {
 		schema {
-            friend:uid @reverse
+            friend:uid @reverse .
 		}
 	}
 	`
@@ -425,7 +427,7 @@ func TestSchemaMutationReverseRemove(t *testing.T) {
 	var s1 = `
 	mutation {
 		schema {
-            friend:uid @reverse
+            friend:uid @reverse .
 		}
 	}
 	`
@@ -433,7 +435,7 @@ func TestSchemaMutationReverseRemove(t *testing.T) {
 	var s2 = `
 	mutation {
 		schema {
-            friend:uid
+            friend:uid .
 		}
 	}
 	`
@@ -459,8 +461,200 @@ func TestSchemaMutationReverseRemove(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestDeleteAll(t *testing.T) {
+	var q1 = `
+	{
+		user(id:alice2) {
+			~friend {
+				name
+			}
+		}
+	}
+	`
+	var q2 = `
+	{
+		user(func: anyofterms(name, "alice")) {
+			friend {
+				name
+			}
+		}
+	}
+	`
+
+	var m2 = `
+	mutation{
+		delete{
+			<alice> <friend> * .
+			<alice> <name> * .
+		}
+	}
+	`
+	var m1 = `
+	mutation {
+		set {
+			<alice> <friend> <alice1> .
+			<alice> <friend> <alice2> .
+			<alice> <name> "Alice" .
+			<alice1> <name> "Alice1" .
+			<alice2> <name> "Alice2" .
+		}
+	}
+	`
+
+	var s1 = `
+	mutation {
+		schema {
+      friend:uid @reverse .
+			name: string @index .
+		}
+	}
+	`
+	schema.ParseBytes([]byte(""), 1)
+	err := runMutation(s1)
+	require.NoError(t, err)
+
+	err = runMutation(m1)
+	require.NoError(t, err)
+
+	output, err := runQuery(q1)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"user":[{"~friend" : [{"name":"Alice"}]}]}`, output)
+
+	output, err = runQuery(q2)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"user":[{"friend":[{"name":"Alice2"},{"name":"Alice1"}]}]}`,
+		output)
+
+	err = runMutation(m2)
+	require.NoError(t, err)
+
+	output, err = runQuery(q1)
+	require.NoError(t, err)
+	require.JSONEq(t, `{}`, output)
+
+	output, err = runQuery(q2)
+	require.NoError(t, err)
+	require.JSONEq(t, `{}`, output)
+}
+
+func TestDeleteAllSP(t *testing.T) {
+	var q1 = `
+	{
+		user(id:alice2) {
+			~friend {
+				name
+			}
+		}
+	}
+	`
+	var q2 = `
+	{
+		user(func: anyofterms(name, "alice")) {
+			friend {
+				name
+			}
+		}
+	}
+	`
+	var q3 = `
+	{
+		user(id: alice) {
+			_predicate_
+		}
+	}
+	`
+	var q4 = `
+	{
+		user(id: alice) {
+			count(_predicate_)
+		}
+	}
+	`
+	var q5 = `
+	{
+		user(id: alice) {
+			pred_count: count(_predicate_)
+		}
+	}
+	`
+
+	var m2 = `
+	mutation{
+		delete{
+			<alice> * * .
+		}
+	}
+	`
+	var m1 = `
+	mutation {
+		set {
+			<alice> <friend> <alice1> .
+			<alice> <friend> <alice2> .
+			<alice> <name> "Alice" .
+			<alice1> <name> "Alice1" .
+			<alice2> <name> "Alice2" .
+		}
+	}
+	`
+
+	var s1 = `
+	mutation {
+		schema {
+      friend:uid @reverse .
+			name: string @index .
+		}
+	}
+	`
+	schema.ParseBytes([]byte(""), 1)
+	err := runMutation(s1)
+	require.NoError(t, err)
+
+	err = runMutation(m1)
+	require.NoError(t, err)
+
+	output, err := runQuery(q1)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"user":[{"~friend" : [{"name":"Alice"}]}]}`, output)
+
+	output, err = runQuery(q2)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"user":[{"friend":[{"name":"Alice2"},{"name":"Alice1"}]}]}`,
+		output)
+
+	output, err = runQuery(q3)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"user":[{"_predicate_":[{"_name_":"friend"},{"_name_":"name"}]}]}`,
+		output)
+
+	output, err = runQuery(q4)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"user":[{"count(_predicate_)":2}]}`,
+		output)
+
+	output, err = runQuery(q5)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"user":[{"pred_count":2}]}`,
+		output)
+
+	err = runMutation(m2)
+	require.NoError(t, err)
+
+	output, err = runQuery(q1)
+	require.NoError(t, err)
+	require.JSONEq(t, `{}`, output)
+
+	output, err = runQuery(q2)
+	require.NoError(t, err)
+	require.JSONEq(t, `{}`, output)
+
+	output, err = runQuery(q3)
+	require.NoError(t, err)
+	require.JSONEq(t, `{}`,
+		output)
+}
+
 func TestQuery(t *testing.T) {
-	res, err := gql.Parse(m)
+	res, err := gql.Parse(gql.Request{Str: m, Http: true})
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -489,12 +683,11 @@ var q5 = `
 `
 
 func TestSchemaValidationError(t *testing.T) {
-	res, err := gql.Parse(m5)
+	res, err := gql.Parse(gql.Request{Str: m5, Http: true})
 	require.NoError(t, err)
 
 	ctx := context.Background()
 	_, err = mutationHandler(ctx, res.Mutation)
-
 	require.Error(t, err)
 	output := processToFastJSON(strings.Replace(q5, "<id>", "ram", -1))
 	require.JSONEq(t, `{}`, output)
@@ -519,7 +712,7 @@ var q6 = `
 `
 
 func TestSchemaConversion(t *testing.T) {
-	res, err := gql.Parse(m6)
+	res, err := gql.Parse(gql.Request{Str: m6, Http: true})
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -538,15 +731,15 @@ func TestSchemaConversion(t *testing.T) {
 }
 
 var qErr = `
-	mutation {
-		set {
-			<0x0> <name> "Alice" .
-		}
-	}
-`
+ 	mutation {
+ 		set {
+ 			<0x0> <name> "Alice" .
+ 		}
+ 	}
+ `
 
 func TestMutationError(t *testing.T) {
-	res, err := gql.Parse(qErr)
+	res, err := gql.Parse(gql.Request{Str: qErr, Http: true})
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -567,7 +760,7 @@ var qm = `
 `
 
 func TestAssignUid(t *testing.T) {
-	res, err := gql.Parse(qm)
+	res, err := gql.Parse(gql.Request{Str: qm, Http: true})
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -624,9 +817,136 @@ func BenchmarkQuery(b *testing.B) {
 	}
 }
 
+func TestListPred(t *testing.T) {
+	var q1 = `
+	{
+		listpred(func:anyofterms(name, "Alice")) {
+				_predicate_
+		}
+	}
+	`
+	var m = `
+	mutation {
+		set {
+			<alice> <name> "Alice" .
+			<alice> <age> "13" .
+			<alice> <friend> <bob> .
+		}
+	}
+	`
+	var s = `
+	mutation {
+		schema {
+            name:string @index .
+		}
+	}
+	`
+
+	// reset Schema
+	schema.ParseBytes([]byte(""), 1)
+	err := runMutation(m)
+	require.NoError(t, err)
+
+	// add index to name
+	err = runMutation(s)
+	require.NoError(t, err)
+
+	output, err := runQuery(q1)
+	require.NoError(t, err)
+	require.Equal(t, `{"listpred":[{"_predicate_":[{"_name_":"age"},{"_name_":"friend"},{"_name_":"name"}]}]}`,
+		output)
+}
+
+func TestExpandPredError(t *testing.T) {
+	var q1 = `
+	{
+		me(func:anyofterms(name, "Alice")) {
+  		expand(_all_)
+			name
+			friend
+		}
+	}
+	`
+	var m = `
+	mutation {
+		set {
+			<alice> <name> "Alice" .
+			<alice> <age> "13" .
+			<alice> <friend> <bob> .
+			<bob> <name> "bob" .
+			<bob> <age> "12" .
+		}
+	}
+	`
+	var s = `
+	mutation {
+		schema {
+            name:string @index .
+		}
+	}
+	`
+
+	// reset Schema
+	schema.ParseBytes([]byte(""), 1)
+	err := runMutation(m)
+	require.NoError(t, err)
+
+	// add index to name
+	err = runMutation(s)
+	require.NoError(t, err)
+
+	_, err = runQuery(q1)
+	require.Error(t, err)
+}
+
+func TestExpandPred(t *testing.T) {
+	var q1 = `
+	{
+		me(func:anyofterms(name, "Alice")) {
+			expand(_all_) {
+  			expand(_all_)
+			}
+		}
+	}
+	`
+	var m = `
+	mutation {
+		set {
+			<alice> <name> "Alice" .
+			<alice> <age> "13" .
+			<alice> <friend> <bob> .
+			<bob> <name> "bob" .
+			<bob> <age> "12" .
+		}
+	}
+	`
+	var s = `
+	mutation {
+		schema {
+            name:string @index .
+		}
+	}
+	`
+
+	// reset Schema
+	schema.ParseBytes([]byte(""), 1)
+	err := runMutation(m)
+	require.NoError(t, err)
+
+	// add index to name
+	err = runMutation(s)
+	require.NoError(t, err)
+
+	output, err := runQuery(q1)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"me":[{"age":"13","friend":[{"age":"12","name":"bob"}],"name":"Alice"}]}`,
+		output)
+
+}
 func TestMain(m *testing.M) {
 	x.Init()
-	dir1, dir2, _, _ := prepare()
+	dir1, dir2, ps, _ := prepare()
+	defer ps.Close()
 	defer closeAll(dir1, dir2)
 	time.Sleep(5 * time.Second) // Wait for ME to become leader.
 

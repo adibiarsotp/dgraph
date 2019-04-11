@@ -1,17 +1,18 @@
 /*
- * Copyright 2017 Dgraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package facets
@@ -20,24 +21,23 @@ import (
 	"bytes"
 	"sort"
 	"strconv"
-	"time"
 	"unicode"
 
-	"github.com/dgraph-io/dgraph/protos/facetsp"
-	"github.com/dgraph-io/dgraph/tok"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/tok"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 // Sorts the facets.
-func SortFacets(fs []*facetsp.Facet) {
+func SortFacets(fs []*protos.Facet) {
 	sort.Slice(fs, func(i, j int) bool {
 		return fs[i].Key < fs[j].Key
 	})
 }
 
 // CopyFacets makes a copy of facets of the posting which are requested in param.Keys.
-func CopyFacets(fcs []*facetsp.Facet, param *facetsp.Param) (fs []*facetsp.Facet) {
+func CopyFacets(fcs []*protos.Facet, param *protos.Param) (fs []*protos.Facet) {
 	if param == nil || fcs == nil {
 		return nil
 	}
@@ -48,7 +48,7 @@ func CopyFacets(fcs []*facetsp.Facet, param *facetsp.Param) (fs []*facetsp.Facet
 	for kidx, fidx := 0, 0; (param.AllKeys || kidx < numKeys) && fidx < numFacets; {
 		f := fcs[fidx]
 		if param.AllKeys || param.Keys[kidx] == f.Key {
-			fcopy := &facetsp.Facet{Key: f.Key, Value: nil, ValType: f.ValType}
+			fcopy := &protos.Facet{Key: f.Key, Value: nil, ValType: f.ValType}
 			fcopy.Value = make([]byte, len(f.Value))
 			copy(fcopy.Value, f.Value)
 			fs = append(fs, fcopy)
@@ -64,48 +64,53 @@ func CopyFacets(fcs []*facetsp.Facet, param *facetsp.Param) (fs []*facetsp.Facet
 }
 
 // valAndValType returns interface val and valtype for facet.
-func valAndValType(val string) (interface{}, facetsp.Facet_ValType, error) {
-	// TODO(ashish) : strings should be in quotes.. \"\"
-	// No need to check for nonNumChar then.
-	if intVal, err := strconv.ParseInt(val, 0, 32); err == nil {
-		return int32(intVal), facetsp.Facet_INT32, nil
+func valAndValType(val string) (interface{}, protos.Facet_ValType, error) {
+	if len(val) == 0 { // empty string case
+		return "", protos.Facet_STRING, nil
+	}
+	// strings should be in quotes.
+	if len(val) >= 2 && val[0] == '"' && val[len(val)-1] == '"' {
+		return val[1 : len(val)-1], protos.Facet_STRING, nil
+	}
+	if intVal, err := strconv.ParseInt(val, 0, 64); err == nil {
+		return int64(intVal), protos.Facet_INT, nil
 	} else if numErr := err.(*strconv.NumError); numErr.Err == strconv.ErrRange {
-		// check if whole string is only of nums or not.
-		// comes here for : 11111111111111111111132333uasfk333 ; see test.
-		nonNumChar := false
+		// if we have only digits in val, then val is a big integer : return error
+		// otherwise try to parse as float.
+		allNumChars := true
 		for _, v := range val {
 			if !unicode.IsDigit(v) {
-				nonNumChar = true
+				allNumChars = false
 				break
 			}
 		}
-		if !nonNumChar { // return error
-			return nil, facetsp.Facet_INT32, err
+		if allNumChars {
+			return nil, protos.Facet_INT, err
 		}
 	}
 	if floatVal, err := strconv.ParseFloat(val, 64); err == nil {
-		return floatVal, facetsp.Facet_FLOAT, nil
+		return floatVal, protos.Facet_FLOAT, nil
 	} else if numErr := err.(*strconv.NumError); numErr.Err == strconv.ErrRange {
-		return nil, facetsp.Facet_FLOAT, err
+		return nil, protos.Facet_FLOAT, err
 	}
 	if val == "true" || val == "false" {
-		return val == "true", facetsp.Facet_BOOL, nil
+		return val == "true", protos.Facet_BOOL, nil
 	}
-	if t, err := parseTime(val); err == nil {
-		return t, facetsp.Facet_DATETIME, nil
+	if t, err := types.ParseTime(val); err == nil {
+		return t, protos.Facet_DATETIME, nil
 	}
-	return val, facetsp.Facet_STRING, nil
+	return nil, protos.Facet_STRING, x.Errorf("Could not parse the facet value : [%s]", val)
 }
 
 // FacetFor returns Facet for given key and val.
-func FacetFor(key, val string) (*facetsp.Facet, error) {
+func FacetFor(key, val string) (*protos.Facet, error) {
 	v, vt, err := valAndValType(val)
 	if err != nil {
 		return nil, err
 	}
 
 	// convert facet val interface{} to binary
-	tid := TypeIDFor(&facetsp.Facet{ValType: vt})
+	tid := TypeIDFor(&protos.Facet{ValType: vt})
 	fVal := &types.Val{Tid: types.BinaryID}
 	if err = types.Marshal(types.Val{Tid: tid, Value: v}, fVal); err != nil {
 		return nil, err
@@ -115,8 +120,8 @@ func FacetFor(key, val string) (*facetsp.Facet, error) {
 	if !ok {
 		return nil, x.Errorf("Error while marshalling types.Val into binary.")
 	}
-	res := &facetsp.Facet{Key: key, Value: fval, ValType: vt}
-	if vt == facetsp.Facet_STRING {
+	res := &protos.Facet{Key: key, Value: fval, ValType: vt}
+	if vt == protos.Facet_STRING {
 		// tokenize val.
 		res.Tokens, err = tok.GetTokens([]string{val})
 		if err == nil {
@@ -128,7 +133,7 @@ func FacetFor(key, val string) (*facetsp.Facet, error) {
 
 // SameFacets returns whether two facets are same or not.
 // both should be sorted by key.
-func SameFacets(a []*facetsp.Facet, b []*facetsp.Facet) bool {
+func SameFacets(a []*protos.Facet, b []*protos.Facet) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -143,26 +148,11 @@ func SameFacets(a []*facetsp.Facet, b []*facetsp.Facet) bool {
 	return true
 }
 
-// Move to types/parse namespace.
-func parseTime(val string) (time.Time, error) {
-	var t time.Time
-	if err := t.UnmarshalText([]byte(val)); err == nil {
-		return t, err
-	}
-	if t, err := time.Parse(dateTimeFormat, val); err == nil {
-		return t, err
-	}
-	return time.Parse(dateFormatYMD, val)
-}
-
-const dateFormatYMD = "2006-01-02"
-const dateTimeFormat = "2006-01-02T15:04:05"
-
 // TypeIDFor gives TypeID for facet.
-func TypeIDFor(f *facetsp.Facet) types.TypeID {
+func TypeIDFor(f *protos.Facet) types.TypeID {
 	switch TypeIDForValType(f.ValType) {
-	case Int32ID:
-		return types.Int32ID
+	case IntID:
+		return types.IntID
 	case StringID:
 		return types.StringID
 	case BoolID:
@@ -177,7 +167,7 @@ func TypeIDFor(f *facetsp.Facet) types.TypeID {
 }
 
 // ValFor converts Facet into types.Val.
-func ValFor(f *facetsp.Facet) types.Val {
+func ValFor(f *protos.Facet) types.Val {
 	val := types.Val{Tid: types.BinaryID, Value: f.Value}
 	typId := TypeIDFor(f)
 	v, err := types.Convert(val, typId)

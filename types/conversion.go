@@ -1,17 +1,18 @@
 /*
- * Copyright 2016 Dgraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package types
@@ -28,14 +29,12 @@ import (
 	"github.com/twpayne/go-geom/encoding/geojson"
 	"github.com/twpayne/go-geom/encoding/wkb"
 
-	"github.com/dgraph-io/dgraph/protos/graphp"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 // Convert converts the value to given scalar type.
 func Convert(from Val, toID TypeID) (Val, error) {
-	// fromID TypeID, toID TypeID, data []byte, res *interface{}) error {
-
 	to := ValueForType(toID)
 	fromID := from.Tid
 	data := from.Value.([]byte)
@@ -50,11 +49,11 @@ func Convert(from Val, toID TypeID) (Val, error) {
 				*res = data
 			case StringID, DefaultID:
 				*res = string(data)
-			case Int32ID:
-				if len(data) < 4 {
-					return to, x.Errorf("Invalid data for int32 %v", data)
+			case IntID:
+				if len(data) < 8 {
+					return to, x.Errorf("Invalid data for int64 %v", data)
 				}
-				*res = int32(binary.LittleEndian.Uint32(data))
+				*res = int64(binary.LittleEndian.Uint64(data))
 			case FloatID:
 				if len(data) < 8 {
 					return to, x.Errorf("Invalid data for float %v", data)
@@ -104,13 +103,13 @@ func Convert(from Val, toID TypeID) (Val, error) {
 			case BinaryID:
 				// Marshal Binary
 				*res = []byte(vc)
-			case Int32ID:
+			case IntID:
 				// Marshal text.
-				val, err := strconv.ParseInt(string(vc), 10, 32)
+				val, err := strconv.ParseInt(string(vc), 10, 64)
 				if err != nil {
 					return to, err
 				}
-				*res = int32(val)
+				*res = int64(val)
 			case FloatID:
 				val, err := strconv.ParseFloat(string(vc), 64)
 				if err != nil {
@@ -126,24 +125,16 @@ func Convert(from Val, toID TypeID) (Val, error) {
 				}
 				*res = bool(val)
 			case DateID:
-				val, err := time.Parse(dateFormatYMD, string(vc))
+				t, err := ParseTime(vc)
 				if err != nil {
-					val, err = time.Parse(dateFormatYM, string(vc))
-					if err != nil {
-						val, err = time.Parse(dateFormatY, string(vc))
-						if err != nil {
-							return to, err
-						}
-					}
+					return to, err
 				}
-				*res = val
+				// trim time part
+				*res = createDate(t.Date())
 			case DateTimeID:
-				var t time.Time
-				if err := t.UnmarshalText([]byte(vc)); err != nil {
-					// Try parsing without timezone since that is a valid format
-					if t, err = time.Parse(dateTimeFormat, vc); err != nil {
-						return to, err
-					}
+				t, err := ParseTime(vc)
+				if err != nil {
+					return to, err
 				}
 				*res = t
 			case GeoID:
@@ -163,31 +154,31 @@ func Convert(from Val, toID TypeID) (Val, error) {
 				return to, cantConvert(fromID, toID)
 			}
 		}
-	case Int32ID:
+	case IntID:
 		{
-			if len(data) < 4 {
-				return to, x.Errorf("Invalid data for int32 %v", data)
+			if len(data) < 8 {
+				return to, x.Errorf("Invalid data for int64 %v", data)
 			}
-			vc := int32(binary.LittleEndian.Uint32(data))
+			vc := int64(binary.LittleEndian.Uint64(data))
 			switch toID {
-			case Int32ID:
+			case IntID:
 				*res = vc
 			case BinaryID:
 				// Marshal Binary
-				var bs [4]byte
-				binary.LittleEndian.PutUint32(bs[:], uint32(vc))
+				var bs [8]byte
+				binary.LittleEndian.PutUint64(bs[:], uint64(vc))
 				*res = bs[:]
 			case FloatID:
 				*res = float64(vc)
 			case BoolID:
 				*res = bool(vc != 1)
 			case StringID, DefaultID:
-				*res = string(strconv.FormatInt(int64(vc), 10))
+				*res = string(strconv.FormatInt(vc, 10))
 			case DateID:
-				date := time.Unix(int64(vc), 0).UTC()
+				date := time.Unix(vc, 0).UTC()
 				*res = createDate(date.Date())
 			case DateTimeID:
-				*res = time.Unix(int64(vc), 0).UTC()
+				*res = time.Unix(vc, 0).UTC()
 			default:
 				return to, cantConvert(fromID, toID)
 			}
@@ -209,11 +200,11 @@ func Convert(from Val, toID TypeID) (Val, error) {
 				u := math.Float64bits(float64(vc))
 				binary.LittleEndian.PutUint64(bs[:], u)
 				*res = bs[:]
-			case Int32ID:
-				if vc > math.MaxInt32 || vc < math.MinInt32 || math.IsNaN(float64(vc)) {
-					return to, x.Errorf("Float out of int32 range")
+			case IntID:
+				if vc > math.MaxInt64 || vc < math.MinInt64 || math.IsNaN(float64(vc)) {
+					return to, x.Errorf("Float out of int64 range")
 				}
-				*res = int32(vc)
+				*res = int64(vc)
 			case BoolID:
 				*res = bool(vc != 1)
 			case StringID, DefaultID:
@@ -255,10 +246,10 @@ func Convert(from Val, toID TypeID) (Val, error) {
 					bs[0] = 1
 				}
 				*res = bs[:]
-			case Int32ID:
-				*res = int32(0)
+			case IntID:
+				*res = int64(0)
 				if vc {
-					*res = int32(1)
+					*res = int64(1)
 				}
 			case FloatID:
 				*res = float64(0)
@@ -292,12 +283,12 @@ func Convert(from Val, toID TypeID) (Val, error) {
 				*res = createDate(vc.Date())
 			case StringID, DefaultID:
 				*res = vc.Format(dateFormatYMD)
-			case Int32ID:
+			case IntID:
 				secs := vc.Unix()
-				if secs > math.MaxInt32 || secs < math.MinInt32 {
-					return to, x.Errorf("Time out of int32 range")
+				if secs > math.MaxInt64 || secs < math.MinInt64 {
+					return to, x.Errorf("Time out of int64 range")
 				}
-				*res = int32(secs)
+				*res = int64(secs)
 			case FloatID:
 				secs := float64(vc.Unix())
 				nano := float64(vc.Nanosecond())
@@ -332,12 +323,12 @@ func Convert(from Val, toID TypeID) (Val, error) {
 					return to, err
 				}
 				*res = string(val)
-			case Int32ID:
+			case IntID:
 				secs := vc.Unix()
-				if secs > math.MaxInt32 || secs < math.MinInt32 {
-					return to, x.Errorf("Time out of int32 range")
+				if secs > math.MaxInt64 || secs < math.MinInt64 {
+					return to, x.Errorf("Time out of int64 range")
 				}
-				*res = int32(secs)
+				*res = int64(secs)
 			case FloatID:
 				secs := float64(vc.Unix())
 				nano := float64(vc.Nanosecond())
@@ -395,7 +386,6 @@ func Convert(from Val, toID TypeID) (Val, error) {
 }
 
 func Marshal(from Val, to *Val) error {
-	// toID TypeID, val interface{}, res *interface{}) error {
 	fromID := from.Tid
 	toID := to.Tid
 	val := from.Value
@@ -424,15 +414,15 @@ func Marshal(from Val, to *Val) error {
 		default:
 			return cantConvert(fromID, toID)
 		}
-	case Int32ID:
-		vc := val.(int32)
+	case IntID:
+		vc := val.(int64)
 		switch toID {
 		case StringID, DefaultID:
 			*res = strconv.FormatInt(int64(vc), 10)
 		case BinaryID:
 			// Marshal Binary
-			var bs [4]byte
-			binary.LittleEndian.PutUint32(bs[:], uint32(vc))
+			var bs [8]byte
+			binary.LittleEndian.PutUint64(bs[:], uint64(vc))
 			*res = bs[:]
 		default:
 			return cantConvert(fromID, toID)
@@ -538,9 +528,9 @@ func Marshal(from Val, to *Val) error {
 	return nil
 }
 
-// ObjectValue converts into graphp.Value.
-func ObjectValue(id TypeID, value interface{}) (*graphp.Value, error) {
-	def := &graphp.Value{&graphp.Value_StrVal{""}}
+// ObjectValue converts into protos.Value.
+func ObjectValue(id TypeID, value interface{}) (*protos.Value, error) {
+	def := &protos.Value{&protos.Value_StrVal{""}}
 	var ok bool
 	// Lets set the object value according to the storage type.
 	switch id {
@@ -549,37 +539,37 @@ func ObjectValue(id TypeID, value interface{}) (*graphp.Value, error) {
 		if v, ok = value.(string); !ok {
 			return def, x.Errorf("Expected value of type string. Got : %v", value)
 		}
-		return &graphp.Value{&graphp.Value_StrVal{v}}, nil
+		return &protos.Value{&protos.Value_StrVal{v}}, nil
 	case DefaultID:
 		var v string
 		if v, ok = value.(string); !ok {
 			return def, x.Errorf("Expected value of type string. Got : %v", value)
 		}
-		return &graphp.Value{&graphp.Value_DefaultVal{v}}, nil
-	case Int32ID:
-		var v int32
-		if v, ok = value.(int32); !ok {
-			return def, x.Errorf("Expected value of type int32. Got : %v", value)
+		return &protos.Value{&protos.Value_DefaultVal{v}}, nil
+	case IntID:
+		var v int64
+		if v, ok = value.(int64); !ok {
+			return def, x.Errorf("Expected value of type int64. Got : %v", value)
 		}
-		return &graphp.Value{&graphp.Value_IntVal{v}}, nil
+		return &protos.Value{&protos.Value_IntVal{v}}, nil
 	case FloatID:
 		var v float64
 		if v, ok = value.(float64); !ok {
 			return def, x.Errorf("Expected value of type float64. Got : %v", value)
 		}
-		return &graphp.Value{&graphp.Value_DoubleVal{v}}, nil
+		return &protos.Value{&protos.Value_DoubleVal{v}}, nil
 	case BoolID:
 		var v bool
 		if v, ok = value.(bool); !ok {
 			return def, x.Errorf("Expected value of type bool. Got : %v", value)
 		}
-		return &graphp.Value{&graphp.Value_BoolVal{v}}, nil
+		return &protos.Value{&protos.Value_BoolVal{v}}, nil
 	case BinaryID:
 		var v []byte
 		if v, ok = value.([]byte); !ok {
 			return def, x.Errorf("Expected value of type []byte. Got : %v", value)
 		}
-		return &graphp.Value{&graphp.Value_BytesVal{v}}, nil
+		return &protos.Value{&protos.Value_BytesVal{v}}, nil
 	// Geo, date and datetime are stored in binary format in the NQuad, so lets
 	// convert them here.
 	case GeoID:
@@ -587,25 +577,25 @@ func ObjectValue(id TypeID, value interface{}) (*graphp.Value, error) {
 		if err != nil {
 			return def, err
 		}
-		return &graphp.Value{&graphp.Value_GeoVal{b}}, nil
+		return &protos.Value{&protos.Value_GeoVal{b}}, nil
 	case DateID:
 		b, err := toBinary(id, value)
 		if err != nil {
 			return def, err
 		}
-		return &graphp.Value{&graphp.Value_DateVal{b}}, nil
+		return &protos.Value{&protos.Value_DateVal{b}}, nil
 	case DateTimeID:
 		b, err := toBinary(id, value)
 		if err != nil {
 			return def, err
 		}
-		return &graphp.Value{&graphp.Value_DatetimeVal{b}}, nil
+		return &protos.Value{&protos.Value_DatetimeVal{b}}, nil
 	case PasswordID:
 		var v string
 		if v, ok = value.(string); !ok {
 			return def, x.Errorf("Expected value of type password. Got : %v", value)
 		}
-		return &graphp.Value{&graphp.Value_PasswordVal{v}}, nil
+		return &protos.Value{&protos.Value_PasswordVal{v}}, nil
 	default:
 		return def, x.Errorf("ObjectValue not available for: %v", id)
 	}
@@ -625,8 +615,8 @@ func cantConvert(from TypeID, to TypeID) error {
 
 func (v Val) MarshalJSON() ([]byte, error) {
 	switch v.Tid {
-	case Int32ID:
-		return json.Marshal(v.Value.(int32))
+	case IntID:
+		return json.Marshal(v.Value.(int64))
 	case BoolID:
 		return json.Marshal(v.Value.(bool))
 	case FloatID:

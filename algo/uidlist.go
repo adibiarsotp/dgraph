@@ -1,16 +1,33 @@
+/*
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package algo
 
 import (
 	"container/heap"
 	"sort"
 
-	"github.com/dgraph-io/dgraph/protos/taskp"
+	"github.com/adibiarsotp/dgraph/protos"
 )
 
 const jump = 32 // Jump size in InsersectWithJump.
 
 // ApplyFilter applies a filter to our UIDList.
-func ApplyFilter(u *taskp.List, f func(uint64, int) bool) {
+func ApplyFilter(u *protos.List, f func(uint64, int) bool) {
 	out := u.Uids[:0]
 	for i, uid := range u.Uids {
 		if f(uid, i) {
@@ -22,7 +39,7 @@ func ApplyFilter(u *taskp.List, f func(uint64, int) bool) {
 
 // IntersectWith intersects u with v. The update is made to o.
 // u, v should be sorted.
-func IntersectWith(u, v, o *taskp.List) {
+func IntersectWith(u, v, o *protos.List) {
 	n := len(u.Uids)
 	m := len(v.Uids)
 
@@ -159,13 +176,13 @@ func binIntersect(d, q []uint64, final *[]uint64) {
 }
 
 type listInfo struct {
-	l      *taskp.List
+	l      *protos.List
 	length int
 }
 
-func IntersectSorted(lists []*taskp.List) *taskp.List {
+func IntersectSorted(lists []*protos.List) *protos.List {
 	if len(lists) == 0 {
-		return &taskp.List{}
+		return &protos.List{}
 	}
 	ls := make([]listInfo, 0, len(lists))
 	for _, list := range lists {
@@ -178,7 +195,7 @@ func IntersectSorted(lists []*taskp.List) *taskp.List {
 	sort.Slice(ls, func(i, j int) bool {
 		return ls[i].length < ls[j].length
 	})
-	out := &taskp.List{Uids: make([]uint64, ls[0].length)}
+	out := &protos.List{Uids: make([]uint64, ls[0].length)}
 	if len(ls) == 1 {
 		copy(out.Uids, ls[0].l.Uids)
 		return out
@@ -197,14 +214,15 @@ func IntersectSorted(lists []*taskp.List) *taskp.List {
 	return out
 }
 
-func Difference(u, v *taskp.List) {
+func Difference(u, v *protos.List) {
 	if u == nil || v == nil {
 		return
 	}
 	out := u.Uids[:0]
 	n := len(u.Uids)
 	m := len(v.Uids)
-	for i, k := 0, 0; i < n && k < m; {
+	i, k := 0, 0
+	for i < n && k < m {
 		uid := u.Uids[i]
 		vid := v.Uids[k]
 		if uid < vid {
@@ -220,13 +238,17 @@ func Difference(u, v *taskp.List) {
 			}
 		}
 	}
+	for i < n && k >= m {
+		out = append(out, u.Uids[i])
+		i++
+	}
 	u.Uids = out
 }
 
 // MergeSorted merges sorted lists.
-func MergeSorted(lists []*taskp.List) *taskp.List {
+func MergeSorted(lists []*protos.List) *protos.List {
 	if len(lists) == 0 {
-		return new(taskp.List)
+		return new(protos.List)
 	}
 
 	h := &uint64Heap{}
@@ -234,6 +256,9 @@ func MergeSorted(lists []*taskp.List) *taskp.List {
 	maxSz := 0
 
 	for i, l := range lists {
+		if l == nil {
+			continue
+		}
 		lenList := len(l.Uids)
 		if lenList > 0 {
 			heap.Push(h, elem{
@@ -267,12 +292,12 @@ func MergeSorted(lists []*taskp.List) *taskp.List {
 			heap.Fix(h, 0) // Faster than Pop() followed by Push().
 		}
 	}
-	return &taskp.List{Uids: output}
+	return &protos.List{Uids: output}
 }
 
 // IndexOf performs a binary search on the uids slice and returns the index at
 // which it finds the uid, else returns -1
-func IndexOf(u *taskp.List, uid uint64) int {
+func IndexOf(u *protos.List, uid uint64) int {
 	i := sort.Search(len(u.Uids), func(i int) bool { return u.Uids[i] >= uid })
 	if i < len(u.Uids) && u.Uids[i] == uid {
 		return i
@@ -281,7 +306,7 @@ func IndexOf(u *taskp.List, uid uint64) int {
 }
 
 // ToUintsListForTest converts to list of uints for testing purpose only.
-func ToUintsListForTest(ul []*taskp.List) [][]uint64 {
+func ToUintsListForTest(ul []*protos.List) [][]uint64 {
 	out := make([][]uint64, 0, len(ul))
 	for _, u := range ul {
 		out = append(out, u.Uids)

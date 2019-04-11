@@ -2,7 +2,7 @@
 // mutations using the HTTP interface.
 //
 // You can run the script like
-// go build . && ./dgraphloader -r path-to-gzipped-rdf.gz
+// go build . && ./dgraphloader -r path-to-gzipped-rdf.gz -s path-to-gzipped-schema-rdf.gz
 package main
 
 import (
@@ -21,10 +21,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	"github.com/dgraph-io/dgraph/client"
-	"github.com/dgraph-io/dgraph/rdf"
-	"github.com/dgraph-io/dgraph/schema"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/client"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/rdf"
+	"github.com/adibiarsotp/dgraph/schema"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 var (
@@ -73,8 +74,16 @@ func processSchemaFile(file string, batch *client.BatchMutation) {
 	x.Check(err)
 	defer f.Close()
 
+	var reader io.Reader
+	if strings.HasSuffix(strings.ToLower(file), ".gz") {
+		reader, err = gzip.NewReader(f)
+		x.Check(err)
+	} else {
+		reader = f
+	}
+
 	var buf bytes.Buffer
-	bufReader := bufio.NewReader(f)
+	bufReader := bufio.NewReader(reader)
 	var line int
 	for {
 		err = readLine(bufReader, &buf)
@@ -82,12 +91,15 @@ func processSchemaFile(file string, batch *client.BatchMutation) {
 			break
 		}
 		line++
-		schema, err := schema.Parse(buf.String())
+		schemaUpdate, err := schema.Parse(buf.String())
 		if err != nil {
 			log.Fatalf("Error while parsing schema: %v, on line:%v %v", err, line, buf.String())
 		}
 		buf.Reset()
-		if err = batch.AddSchema(*schema[0]); err != nil {
+		if len(schemaUpdate) == 0 {
+			continue
+		}
+		if err = batch.AddSchema(*schemaUpdate[0]); err != nil {
 			log.Fatal("While adding schema to batch ", err)
 		}
 
@@ -133,10 +145,15 @@ func processFile(file string, batch *client.BatchMutation) {
 }
 
 func printCounters(batch *client.BatchMutation, ticker *time.Ticker) {
+	start := time.Now()
+
 	for range ticker.C {
 		c := batch.Counter()
 		rate := float64(c.Rdfs) / c.Elapsed.Seconds()
-		fmt.Printf("[Request: %6d] Total RDFs done: %8d RDFs per second: %7.0f \r", c.Mutations, c.Rdfs, rate)
+		elapsed := ((time.Since(start) / time.Second) * time.Second).String()
+		fmt.Printf("[Request: %6d] Total RDFs done: %8d RDFs per second: %7.0f Time Elapsed: %v \r",
+			c.Mutations, c.Rdfs, rate, elapsed)
+
 	}
 }
 
@@ -145,7 +162,8 @@ func setupConnection() (*grpc.ClientConn, error) {
 		return grpc.Dial(*dgraph, grpc.WithInsecure())
 	}
 
-	tlsCfg, err := x.GenerateTLSConfig(x.TLSHelperConfig{
+	tlsCfg, _, err := x.GenerateTLSConfig(x.TLSHelperConfig{
+		ConfigType:           x.TLSClientConfig,
 		Insecure:             *tlsInsecure,
 		ServerName:           *tlsServerName,
 		Cert:                 *tlsCert,
@@ -170,7 +188,24 @@ func main() {
 	x.Checkf(err, "While trying to dial gRPC")
 	defer conn.Close()
 
-	batch := client.NewBatchMutation(context.Background(), conn, *numRdf, *concurrent)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+	defer cancel()
+
+	dgraphClient := protos.NewDgraphClient(conn)
+	v, err := dgraphClient.CheckVersion(ctx, &protos.Check{})
+	if err != nil {
+		fmt.Printf(`Could not fetch version information from Dgraph. Got err: %v.`, err)
+	} else {
+		version := x.Version()
+		if version != "" && v.Tag != "" && version != v.Tag {
+			fmt.Printf(`
+Dgraph server: %v, loader: %v dont match.
+You can get the latest version from https://docs.dgraph.io
+`, v.Tag, version)
+		}
+	}
+
+	batch := client.NewBatchMutation(context.Background(), dgraphClient, *numRdf, *concurrent)
 
 	ticker := time.NewTicker(2 * time.Second)
 	go printCounters(batch, ticker)

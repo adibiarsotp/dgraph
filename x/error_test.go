@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package x
 
 import (
@@ -8,12 +25,12 @@ import (
 )
 
 const originalError = `some nice error
-github.com/dgraph-io/dgraph/x.Errorf
-	/home/jchiu/go/src/github.com/dgraph-io/dgraph/x/error.go:90
-github.com/dgraph-io/dgraph/x.someTestFunc
-	/home/jchiu/go/src/github.com/dgraph-io/dgraph/x/error_test.go:12
-github.com/dgraph-io/dgraph/x.TestTraceError
-	/home/jchiu/go/src/github.com/dgraph-io/dgraph/x/error_test.go:16
+github.com/adibiarsotp/dgraph/x.Errorf
+	/home/jchiu/go/src/github.com/adibiarsotp/dgraph/x/error.go:90
+github.com/adibiarsotp/dgraph/x.someTestFunc
+	/home/jchiu/go/src/github.com/adibiarsotp/dgraph/x/error_test.go:12
+github.com/adibiarsotp/dgraph/x.TestTraceError
+	/home/jchiu/go/src/github.com/adibiarsotp/dgraph/x/error_test.go:16
 testing.tRunner
 	/usr/lib/go-1.7/src/testing/testing.go:610
 runtime.goexit

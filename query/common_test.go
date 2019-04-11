@@ -1,17 +1,18 @@
 /*
- * Copyright 2017 Dgraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package query
@@ -24,21 +25,17 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
+	"github.com/dgraph-io/badger/badger"
 	"github.com/stretchr/testify/require"
 	geom "github.com/twpayne/go-geom"
 
-	"github.com/dgraph-io/dgraph/gql"
-	"github.com/dgraph-io/dgraph/posting"
-	"github.com/dgraph-io/dgraph/protos/facetsp"
-	"github.com/dgraph-io/dgraph/protos/graphp"
-	"github.com/dgraph-io/dgraph/protos/taskp"
-	"github.com/dgraph-io/dgraph/types/facets"
-	"github.com/dgraph-io/dgraph/worker"
-
-	"github.com/dgraph-io/dgraph/store"
-	"github.com/dgraph-io/dgraph/types"
-
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/gql"
+	"github.com/adibiarsotp/dgraph/posting"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/types/facets"
+	"github.com/adibiarsotp/dgraph/worker"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 func childAttrs(sg *SubGraph) []string {
@@ -49,7 +46,7 @@ func childAttrs(sg *SubGraph) []string {
 	return out
 }
 
-func taskValues(t *testing.T, v []*taskp.Value) []string {
+func taskValues(t *testing.T, v []*protos.TaskValue) []string {
 	out := make([]string, len(v))
 	for i, tv := range v {
 		out[i] = string(tv.Val)
@@ -57,13 +54,13 @@ func taskValues(t *testing.T, v []*taskp.Value) []string {
 	return out
 }
 
-func addEdge(t *testing.T, attr string, src uint64, edge *taskp.DirectedEdge) {
+func addEdge(t *testing.T, attr string, src uint64, edge *protos.DirectedEdge) {
 	l, _ := posting.GetOrCreate(x.DataKey(attr, src), 1)
 	require.NoError(t,
 		l.AddMutationWithIndex(context.Background(), edge))
 }
 
-func makeFacets(facetKVs map[string]string) (fs []*facetsp.Facet, err error) {
+func makeFacets(facetKVs map[string]string) (fs []*protos.Facet, err error) {
 	if len(facetKVs) == 0 {
 		return nil, nil
 	}
@@ -92,13 +89,13 @@ func addEdgeToLangValue(t *testing.T, attr string, src uint64,
 	value, lang string, facetKVs map[string]string) {
 	fs, err := makeFacets(facetKVs)
 	require.NoError(t, err)
-	edge := &taskp.DirectedEdge{
+	edge := &protos.DirectedEdge{
 		Value:  []byte(value),
 		Lang:   lang,
 		Label:  "testing",
 		Attr:   attr,
 		Entity: src,
-		Op:     taskp.DirectedEdge_SET,
+		Op:     protos.DirectedEdge_SET,
 		Facets: fs,
 	}
 	addEdge(t, attr, src, edge)
@@ -108,13 +105,13 @@ func addEdgeToTypedValue(t *testing.T, attr string, src uint64,
 	typ types.TypeID, value []byte, facetKVs map[string]string) {
 	fs, err := makeFacets(facetKVs)
 	require.NoError(t, err)
-	edge := &taskp.DirectedEdge{
+	edge := &protos.DirectedEdge{
 		Value:     value,
 		ValueType: uint32(typ),
 		Label:     "testing",
 		Attr:      attr,
 		Entity:    src,
-		Op:        taskp.DirectedEdge_SET,
+		Op:        protos.DirectedEdge_SET,
 		Facets:    fs,
 	}
 	addEdge(t, attr, src, edge)
@@ -124,29 +121,29 @@ func addEdgeToUID(t *testing.T, attr string, src uint64,
 	dst uint64, facetKVs map[string]string) {
 	fs, err := makeFacets(facetKVs)
 	require.NoError(t, err)
-	edge := &taskp.DirectedEdge{
+	edge := &protos.DirectedEdge{
 		ValueId: dst,
 		Label:   "testing",
 		Attr:    attr,
 		Entity:  src,
-		Op:      taskp.DirectedEdge_SET,
+		Op:      protos.DirectedEdge_SET,
 		Facets:  fs,
 	}
 	addEdge(t, attr, src, edge)
 }
 
 func delEdgeToUID(t *testing.T, attr string, src uint64, dst uint64) {
-	edge := &taskp.DirectedEdge{
+	edge := &protos.DirectedEdge{
 		ValueId: dst,
 		Label:   "testing",
 		Attr:    attr,
 		Entity:  src,
-		Op:      taskp.DirectedEdge_DEL,
+		Op:      protos.DirectedEdge_DEL,
 	}
 	addEdge(t, attr, src, edge)
 }
 
-func addGeoData(t *testing.T, ps *store.Store, uid uint64, p geom.T, name string) {
+func addGeoData(t *testing.T, ps *badger.KV, uid uint64, p geom.T, name string) {
 	value := types.ValueForType(types.BinaryID)
 	src := types.ValueForType(types.GeoID)
 	src.Value = p
@@ -157,7 +154,7 @@ func addGeoData(t *testing.T, ps *store.Store, uid uint64, p geom.T, name string
 }
 
 func processToFastJsonReq(t *testing.T, query string) (string, error) {
-	res, err := gql.Parse(query)
+	res, err := gql.Parse(gql.Request{Str: query, Http: true})
 	if err != nil {
 		return "", err
 	}
@@ -168,7 +165,7 @@ func processToFastJsonReq(t *testing.T, query string) (string, error) {
 		return "", err
 	}
 	var buf bytes.Buffer
-	err = ToJson(&l, sgl, &buf, nil)
+	err = ToJson(&l, sgl, &buf, nil, false)
 	return string(buf.Bytes()), err
 }
 
@@ -178,8 +175,8 @@ func processToFastJSON(t *testing.T, query string) string {
 	return res
 }
 
-func processSchemaQuery(t *testing.T, q string) []*graphp.SchemaNode {
-	res, err := gql.Parse(q)
+func processSchemaQuery(t *testing.T, q string) []*protos.SchemaNode {
+	res, err := gql.Parse(gql.Request{Str: q})
 	require.NoError(t, err)
 
 	ctx := context.Background()
@@ -188,25 +185,21 @@ func processSchemaQuery(t *testing.T, q string) []*graphp.SchemaNode {
 	return schema
 }
 
-func processToPB(t *testing.T, query string, debug bool) *graphp.Node {
-	res, err := gql.Parse(query)
+func processToPB(t *testing.T, query string, variables map[string]string,
+	debug bool) []*protos.Node {
+	res, err := gql.Parse(gql.Request{Str: query, Variables: variables})
 	require.NoError(t, err)
 	var ctx context.Context
 	if debug {
-		ctx = metadata.NewContext(context.Background(), metadata.Pairs("debug", "true"))
+		ctx = metadata.NewIncomingContext(context.Background(), metadata.Pairs("debug", "true"))
 	} else {
 		ctx = context.Background()
 	}
-	sg, err := ToSubGraph(ctx, res.Query[0])
-	require.NoError(t, err)
-
-	ch := make(chan error)
-	go ProcessGraph(ctx, sg, nil, ch)
-	err = <-ch
-	require.NoError(t, err)
-
 	var l Latency
-	pb, err := sg.ToProtocolBuffer(&l)
+	sgl, err := ProcessQuery(ctx, res, &l)
+	require.NoError(t, err)
+
+	pb, err := ToProtocolBuf(&l, sgl)
 	require.NoError(t, err)
 	return pb
 }

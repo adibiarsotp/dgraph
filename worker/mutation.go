@@ -1,17 +1,18 @@
 /*
- * Copyright 2016 DGraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package worker
@@ -19,15 +20,12 @@ package worker
 import (
 	"golang.org/x/net/context"
 
-	"github.com/dgraph-io/dgraph/group"
-	"github.com/dgraph-io/dgraph/posting"
-	"github.com/dgraph-io/dgraph/protos/graphp"
-	"github.com/dgraph-io/dgraph/protos/taskp"
-	"github.com/dgraph-io/dgraph/protos/typesp"
-	"github.com/dgraph-io/dgraph/protos/workerp"
-	"github.com/dgraph-io/dgraph/schema"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/group"
+	"github.com/adibiarsotp/dgraph/posting"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/schema"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 const (
@@ -37,7 +35,7 @@ const (
 
 // runMutations goes through all the edges and applies them. It returns the
 // mutations which were not applied in left.
-func runMutations(ctx context.Context, edges []*taskp.DirectedEdge) error {
+func runMutations(ctx context.Context, edges []*protos.DirectedEdge) error {
 	for _, edge := range edges {
 		gid := group.BelongsTo(edge.Attr)
 		if !groups().ServesGroup(gid) {
@@ -50,7 +48,7 @@ func runMutations(ctx context.Context, edges []*taskp.DirectedEdge) error {
 		typ, err := schema.State().TypeOf(edge.Attr)
 		x.Checkf(err, "Schema is not present for predicate %s", edge.Attr)
 
-		// Once mutation comes via raft we do best effor conversion
+		// Once mutation comes via raft we do best effort conversion
 		// Type check is done before proposing mutation, in case schema is not
 		// present, some invalid entries might be written initially
 		err = validateAndConvert(edge, typ)
@@ -69,7 +67,7 @@ func runMutations(ctx context.Context, edges []*taskp.DirectedEdge) error {
 
 // This is serialized with mutations, called after applied watermarks catch up
 // and further mutations are blocked until this is done.
-func runSchemaMutations(ctx context.Context, updates []*graphp.SchemaUpdate) error {
+func runSchemaMutations(ctx context.Context, updates []*protos.SchemaUpdate) error {
 	rv := ctx.Value("raft").(x.RaftValue)
 	n := groups().Node(rv.Group)
 	for _, update := range updates {
@@ -98,11 +96,11 @@ func runSchemaMutations(ctx context.Context, updates []*graphp.SchemaUpdate) err
 		// We need watermark for index/reverse edge addition for linearizable reads.
 		// (both applied and synced watermarks).
 		if !ok {
-			if current.Directive == typesp.Schema_INDEX {
+			if current.Directive == protos.SchemaUpdate_INDEX {
 				if err := n.rebuildOrDelIndex(ctx, update.Predicate, true); err != nil {
 					return err
 				}
-			} else if current.Directive == typesp.Schema_REVERSE {
+			} else if current.Directive == protos.SchemaUpdate_REVERSE {
 				if err := n.rebuildOrDelRevEdge(ctx, update.Predicate, true); err != nil {
 					return err
 				}
@@ -113,14 +111,14 @@ func runSchemaMutations(ctx context.Context, updates []*graphp.SchemaUpdate) err
 		if needReindexing(old, current) {
 			// Reindex if update.Index is true or remove index
 			if err := n.rebuildOrDelIndex(ctx, update.Predicate,
-				current.Directive == typesp.Schema_INDEX); err != nil {
+				current.Directive == protos.SchemaUpdate_INDEX); err != nil {
 				return err
 			}
-		} else if (current.Directive == typesp.Schema_REVERSE) !=
-			(old.Directive == typesp.Schema_REVERSE) {
+		} else if (current.Directive == protos.SchemaUpdate_REVERSE) !=
+			(old.Directive == protos.SchemaUpdate_REVERSE) {
 			// Add or remove reverse edge based on update.Reverse
 			if err := n.rebuildOrDelRevEdge(ctx, update.Predicate,
-				current.Directive == typesp.Schema_REVERSE); err != nil {
+				current.Directive == protos.SchemaUpdate_REVERSE); err != nil {
 				return err
 			}
 		}
@@ -128,12 +126,12 @@ func runSchemaMutations(ctx context.Context, updates []*graphp.SchemaUpdate) err
 	return nil
 }
 
-func needReindexing(old typesp.Schema, current typesp.Schema) bool {
-	if (current.Directive == typesp.Schema_INDEX) != (old.Directive == typesp.Schema_INDEX) {
+func needReindexing(old protos.SchemaUpdate, current protos.SchemaUpdate) bool {
+	if (current.Directive == protos.SchemaUpdate_INDEX) != (old.Directive == protos.SchemaUpdate_INDEX) {
 		return true
 	}
 	// if value types has changed
-	if current.Directive == typesp.Schema_INDEX && current.ValueType != old.ValueType {
+	if current.Directive == protos.SchemaUpdate_INDEX && current.ValueType != old.ValueType {
 		return true
 	}
 	// if tokenizer has changed - if same tokenizer works differently
@@ -150,7 +148,7 @@ func needReindexing(old typesp.Schema, current typesp.Schema) bool {
 	return false
 }
 
-func updateSchema(attr string, s typesp.Schema, raftIndex uint64, group uint32) {
+func updateSchema(attr string, s protos.SchemaUpdate, raftIndex uint64, group uint32) {
 	ce := schema.SyncEntry{
 		Attr:   attr,
 		Schema: s,
@@ -167,18 +165,18 @@ func updateSchemaType(attr string, typ types.TypeID, raftIndex uint64, group uin
 	if ok {
 		s.ValueType = uint32(typ)
 	} else {
-		s = typesp.Schema{ValueType: uint32(typ)}
+		s = protos.SchemaUpdate{ValueType: uint32(typ)}
 	}
 	updateSchema(attr, s, raftIndex, group)
 }
 
-func checkSchema(s *graphp.SchemaUpdate) error {
+func checkSchema(s *protos.SchemaUpdate) error {
 	typ := types.TypeID(s.ValueType)
-	if typ == types.UidID && s.Directive == graphp.SchemaUpdate_INDEX {
+	if typ == types.UidID && s.Directive == protos.SchemaUpdate_INDEX {
 		// index on uid type
 		return x.Errorf("Index not allowed on predicate of type uid on predicate %s",
 			s.Predicate)
-	} else if typ != types.UidID && s.Directive == graphp.SchemaUpdate_REVERSE {
+	} else if typ != types.UidID && s.Directive == protos.SchemaUpdate_REVERSE {
 		// reverse on non-uid type
 		return x.Errorf("Cannot reverse for non-uid type on predicate %s", s.Predicate)
 	}
@@ -193,9 +191,15 @@ func checkSchema(s *graphp.SchemaUpdate) error {
 
 // If storage type is specified, then check compatibility or convert to schema type
 // if no storage type is specified then convert to schema type
-func validateAndConvert(edge *taskp.DirectedEdge, schemaType types.TypeID) error {
-	storageType := posting.TypeID(edge)
+func validateAndConvert(edge *protos.DirectedEdge, schemaType types.TypeID) error {
+	if types.TypeID(edge.ValueType) == types.DefaultID && string(edge.Value) == x.DeleteAllObjects {
+		if edge.Op != protos.DirectedEdge_DEL {
+			return x.Errorf("* allowed only with delete operation")
+		}
+		return nil
+	}
 
+	storageType := posting.TypeID(edge)
 	if !schemaType.IsScalar() && !storageType.IsScalar() {
 		return nil
 	} else if !schemaType.IsScalar() && storageType.IsScalar() {
@@ -236,10 +240,10 @@ func validateAndConvert(edge *taskp.DirectedEdge, schemaType types.TypeID) error
 }
 
 // runMutate is used to run the mutations on an instance.
-func proposeOrSend(ctx context.Context, gid uint32, m *taskp.Mutations, che chan error) {
+func proposeOrSend(ctx context.Context, gid uint32, m *protos.Mutations, che chan error) {
 	if groups().ServesGroup(gid) {
 		node := groups().Node(gid)
-		che <- node.ProposeAndWait(ctx, &taskp.Proposal{Mutations: m})
+		che <- node.ProposeAndWait(ctx, &protos.Proposal{Mutations: m})
 		return
 	}
 
@@ -253,19 +257,19 @@ func proposeOrSend(ctx context.Context, gid uint32, m *taskp.Mutations, che chan
 	}
 	defer pl.Put(conn)
 
-	c := workerp.NewWorkerClient(conn)
+	c := protos.NewWorkerClient(conn)
 	_, err = c.Mutate(ctx, m)
 	che <- err
 }
 
 // addToMutationArray adds the edges to the appropriate index in the mutationArray,
 // taking into account the op(operation) and the attribute.
-func addToMutationMap(mutationMap map[uint32]*taskp.Mutations, m *taskp.Mutations) {
+func addToMutationMap(mutationMap map[uint32]*protos.Mutations, m *protos.Mutations) {
 	for _, edge := range m.Edges {
 		gid := group.BelongsTo(edge.Attr)
 		mu := mutationMap[gid]
 		if mu == nil {
-			mu = &taskp.Mutations{GroupId: gid}
+			mu = &protos.Mutations{GroupId: gid}
 			mutationMap[gid] = mu
 		}
 		mu.Edges = append(mu.Edges, edge)
@@ -274,7 +278,7 @@ func addToMutationMap(mutationMap map[uint32]*taskp.Mutations, m *taskp.Mutation
 		gid := group.BelongsTo(schema.Predicate)
 		mu := mutationMap[gid]
 		if mu == nil {
-			mu = &taskp.Mutations{GroupId: gid}
+			mu = &protos.Mutations{GroupId: gid}
 			mutationMap[gid] = mu
 		}
 		mu.Schema = append(mu.Schema, schema)
@@ -283,8 +287,8 @@ func addToMutationMap(mutationMap map[uint32]*taskp.Mutations, m *taskp.Mutation
 
 // MutateOverNetwork checks which group should be running the mutations
 // according to fingerprint of the predicate and sends it to that instance.
-func MutateOverNetwork(ctx context.Context, m *taskp.Mutations) error {
-	mutationMap := make(map[uint32]*taskp.Mutations)
+func MutateOverNetwork(ctx context.Context, m *protos.Mutations) error {
+	mutationMap := make(map[uint32]*protos.Mutations)
 	addToMutationMap(mutationMap, m)
 
 	errors := make(chan error, len(mutationMap))
@@ -311,22 +315,22 @@ func MutateOverNetwork(ctx context.Context, m *taskp.Mutations) error {
 }
 
 // Mutate is used to apply mutations over the network on other instances.
-func (w *grpcWorker) Mutate(ctx context.Context, m *taskp.Mutations) (*workerp.Payload, error) {
+func (w *grpcWorker) Mutate(ctx context.Context, m *protos.Mutations) (*protos.Payload, error) {
 	if ctx.Err() != nil {
-		return &workerp.Payload{}, ctx.Err()
+		return &protos.Payload{}, ctx.Err()
 	}
 
 	if !groups().ServesGroup(m.GroupId) {
-		return &workerp.Payload{}, x.Errorf("This server doesn't serve group id: %v", m.GroupId)
+		return &protos.Payload{}, x.Errorf("This server doesn't serve group id: %v", m.GroupId)
 	}
 	c := make(chan error, 1)
 	node := groups().Node(m.GroupId)
-	go func() { c <- node.ProposeAndWait(ctx, &taskp.Proposal{Mutations: m}) }()
+	go func() { c <- node.ProposeAndWait(ctx, &protos.Proposal{Mutations: m}) }()
 
 	select {
 	case <-ctx.Done():
-		return &workerp.Payload{}, ctx.Err()
+		return &protos.Payload{}, ctx.Err()
 	case err := <-c:
-		return &workerp.Payload{}, err
+		return &protos.Payload{}, err
 	}
 }

@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package worker
 
 import (
@@ -8,16 +25,16 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/dgraph-io/badger/badger"
 	"golang.org/x/net/context"
 
-	"github.com/dgraph-io/dgraph/protos/taskp"
-	"github.com/dgraph-io/dgraph/protos/workerp"
-	"github.com/dgraph-io/dgraph/raftwal"
-	"github.com/dgraph-io/dgraph/schema"
-	"github.com/dgraph-io/dgraph/store"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/raftwal"
+	"github.com/adibiarsotp/dgraph/schema"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 var (
@@ -26,8 +43,14 @@ var (
 		"addr:port of this server, so other Dgraph servers can talk to this.")
 	peerAddr = flag.String("peer", "", "IP_ADDRESS:PORT of any healthy peer.")
 	raftId   = flag.Uint64("idx", 1, "RAFT ID that this server will use to join RAFT groups.")
+	// In case of flaky network connectivity we would try to keep upto maxPendingEntries in wal
+	// so that the nodes which have lagged behind leader can just replay entries instead of
+	// fetching snapshot if network disconnectivity is greater than the interval at which snapshots
+	// are taken
+	maxPendingCount = flag.Uint64("sc", 1000, "Max number of pending entries in wal after which snapshot is taken")
 
-	emptyMembershipUpdate taskp.MembershipUpdate
+	healthCheck           uint32
+	emptyMembershipUpdate protos.MembershipUpdate
 )
 
 type server struct {
@@ -68,6 +91,14 @@ func StartRaftNodes(walDir string) {
 	gr = new(groupi)
 	gr.ctx, gr.cancel = context.WithCancel(context.Background())
 
+	if len(*myAddr) == 0 {
+		*myAddr = fmt.Sprintf("localhost:%d", *workerPort)
+	} else {
+		// check if address is valid or not
+		ok := x.ValidateAddress(*myAddr)
+		x.AssertTruef(ok, "%s is not valid address", *myAddr)
+	}
+
 	// Successfully connect with the peer, before doing anything else.
 	if len(*peerAddr) > 0 {
 		pools().connect(*peerAddr)
@@ -81,6 +112,7 @@ func StartRaftNodes(walDir string) {
 		// after starting the leader of group zero, that leader might not have updated
 		// itself in the memberships; and hence this node would think that no one is handling
 		// group zero. Therefore, we MUST wait to get pass a last update raft index of zero.
+		gr.syncMemberships()
 		for gr.LastUpdate() == 0 {
 			time.Sleep(time.Second)
 			fmt.Println("Last update raft index for membership information is zero. Syncing...")
@@ -90,22 +122,35 @@ func StartRaftNodes(walDir string) {
 	}
 
 	x.Checkf(os.MkdirAll(walDir, 0700), "Error while creating WAL dir.")
-	wals, err := store.NewSyncStore(walDir)
-	x.Checkf(err, "Error initializing wal store")
+	kvOpt := badger.DefaultOptions
+	kvOpt.SyncWrites = true
+	kvOpt.Dir = walDir
+	wals, err := badger.NewKV(&kvOpt)
+	x.Checkf(err, "Error while creating badger KV store")
 	gr.wal = raftwal.Init(wals, *raftId)
 
-	if len(*myAddr) == 0 {
-		*myAddr = fmt.Sprintf("localhost:%d", *workerPort)
-	}
-
+	var wg sync.WaitGroup
 	for _, id := range strings.Split(*groupIds, ",") {
 		gid, err := strconv.ParseUint(id, 0, 32)
 		x.Checkf(err, "Unable to parse group id: %v", id)
 		node := gr.newNode(uint32(gid), *raftId, *myAddr)
-		schema.LoadFromDb(uint32(gid))
-		go node.InitAndStartNode(gr.wal)
+		x.Checkf(schema.LoadFromDb(uint32(gid)), "Error while initilizating schema")
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			node.InitAndStartNode(gr.wal)
+		}()
 	}
+	wg.Wait()
+	atomic.StoreUint32(&healthCheck, 1)
 	go gr.periodicSyncMemberships() // Now set it to be run periodically.
+}
+
+// HealthCheck returns whether the server is ready to accept requests or not
+// Load balancer would add the node to the endpoint once health check starts
+// returning true
+func HealthCheck() bool {
+	return atomic.LoadUint32(&healthCheck) != 0
 }
 
 func (g *groupi) Node(groupId uint32) *node {
@@ -184,6 +229,22 @@ func (g *groupi) Servers(group uint32) []string {
 	return out
 }
 
+// Peer returns node(raft) id of the peer of given nodeid of given group
+func (g *groupi) Peer(group uint32, nodeId uint64) (uint64, bool) {
+	g.RLock()
+	defer g.RUnlock()
+	all := g.all[group]
+	if all == nil {
+		return 0, false
+	}
+	for _, s := range all.list {
+		if s.NodeId != nodeId {
+			return s.NodeId, true
+		}
+	}
+	return 0, false
+}
+
 func (g *groupi) HasPeer(group uint32) bool {
 	g.RLock()
 	defer g.RUnlock()
@@ -212,6 +273,12 @@ func (g *groupi) KnownGroups() (gids []uint32) {
 	defer g.RUnlock()
 	for gid := range g.all {
 		gids = append(gids, gid)
+	}
+	// If we start a single node cluster without group zero
+	if len(gids) == 0 {
+		for gid := range g.local {
+			gids = append(gids, gid)
+		}
 	}
 	return
 }
@@ -285,8 +352,8 @@ func (g *groupi) syncMemberships() {
 				continue
 			}
 
-			go func(rc *taskp.RaftContext, amleader bool) {
-				mm := &taskp.Membership{
+			go func(rc *protos.RaftContext, amleader bool) {
+				mm := &protos.Membership{
 					Leader:  amleader,
 					Id:      rc.Id,
 					GroupId: rc.Group,
@@ -294,7 +361,7 @@ func (g *groupi) syncMemberships() {
 				}
 				zero := g.Node(0)
 				x.AssertTruef(zero != nil, "Expected node 0")
-				if err := zero.ProposeAndWait(zero.ctx, &taskp.Proposal{Membership: mm}); err != nil {
+				if err := zero.ProposeAndWait(zero.ctx, &protos.Proposal{Membership: mm}); err != nil {
 					x.TraceError(g.ctx, err)
 				}
 			}(rc, n.AmLeader())
@@ -304,13 +371,13 @@ func (g *groupi) syncMemberships() {
 
 	// This server doesn't serve group zero.
 	// Generate membership update of all local nodes.
-	var mu taskp.MembershipUpdate
+	var mu protos.MembershipUpdate
 	{
 		g.RLock()
 		for _, n := range g.local {
 			rc := n.raftContext
 			mu.Members = append(mu.Members,
-				&taskp.Membership{
+				&protos.Membership{
 					Leader:  n.AmLeader(),
 					Id:      rc.Id,
 					GroupId: rc.Group,
@@ -339,7 +406,7 @@ UPDATEMEMBERSHIP:
 	x.Check(err)
 	defer pl.Put(conn)
 
-	c := workerp.NewWorkerClient(conn)
+	c := protos.NewWorkerClient(conn)
 	update, err := c.UpdateMembership(g.ctx, &mu)
 	if err != nil {
 		x.TraceError(g.ctx, err)
@@ -381,14 +448,18 @@ func (g *groupi) periodicSyncMemberships() {
 
 // raftIdx is the RAFT index corresponding to the application of this
 // membership update in group zero.
-func (g *groupi) applyMembershipUpdate(raftIdx uint64, mm *taskp.Membership) {
+func (g *groupi) applyMembershipUpdate(raftIdx uint64, mm *protos.Membership) {
 	update := server{
 		NodeId:  mm.Id,
 		Addr:    mm.Addr,
 		Leader:  mm.Leader,
 		RaftIdx: raftIdx,
 	}
-	if update.Addr != *myAddr {
+	if n := g.Node(mm.GroupId); n != nil {
+		// update peer address on address change
+		n.Connect(mm.Id, mm.Addr)
+		// TODO: Clean up old pools
+	} else if update.Addr != *myAddr && mm.Id != *raftId { // ignore previous addr
 		go pools().connect(update.Addr)
 	}
 
@@ -443,12 +514,12 @@ func (g *groupi) applyMembershipUpdate(raftIdx uint64, mm *taskp.Membership) {
 
 // MembershipUpdateAfter generates the Flatbuffer response containing all the
 // membership updates after the provided raft index.
-func (g *groupi) MembershipUpdateAfter(ridx uint64) *taskp.MembershipUpdate {
+func (g *groupi) MembershipUpdateAfter(ridx uint64) *protos.MembershipUpdate {
 	g.RLock()
 	defer g.RUnlock()
 
 	maxIdx := ridx
-	out := new(taskp.MembershipUpdate)
+	out := new(protos.MembershipUpdate)
 
 	for gid, peers := range g.all {
 		for _, s := range peers.list {
@@ -459,7 +530,7 @@ func (g *groupi) MembershipUpdateAfter(ridx uint64) *taskp.MembershipUpdate {
 				maxIdx = s.RaftIdx
 			}
 			out.Members = append(out.Members,
-				&taskp.Membership{
+				&protos.Membership{
 					Leader:  s.Leader,
 					Id:      s.NodeId,
 					GroupId: gid,
@@ -475,7 +546,7 @@ func (g *groupi) MembershipUpdateAfter(ridx uint64) *taskp.MembershipUpdate {
 // UpdateMembership is the RPC call for updating membership for servers
 // which don't serve group zero.
 func (w *grpcWorker) UpdateMembership(ctx context.Context,
-	update *taskp.MembershipUpdate) (*taskp.MembershipUpdate, error) {
+	update *protos.MembershipUpdate) (*protos.MembershipUpdate, error) {
 	if ctx.Err() != nil {
 		return &emptyMembershipUpdate, ctx.Err()
 	}
@@ -483,7 +554,7 @@ func (w *grpcWorker) UpdateMembership(ctx context.Context,
 		addr := groups().AnyServer(0)
 		// fmt.Printf("I don't serve group zero. But, here's who does: %v\n", addr)
 
-		return &taskp.MembershipUpdate{
+		return &protos.MembershipUpdate{
 			Redirect:     true,
 			RedirectAddr: addr,
 		}, nil
@@ -496,16 +567,16 @@ func (w *grpcWorker) UpdateMembership(ctx context.Context,
 			continue
 		}
 
-		mmNew := &taskp.Membership{
+		mmNew := &protos.Membership{
 			Leader:  mm.Leader,
 			Id:      mm.Id,
 			GroupId: mm.GroupId,
 			Addr:    mm.Addr,
 		}
 
-		go func(mmNew *taskp.Membership) {
+		go func(mmNew *protos.Membership) {
 			zero := groups().Node(0)
-			che <- zero.ProposeAndWait(zero.ctx, &taskp.Proposal{Membership: mmNew})
+			che <- zero.ProposeAndWait(zero.ctx, &protos.Proposal{Membership: mmNew})
 		}(mmNew)
 	}
 
@@ -544,6 +615,19 @@ func syncAllMarks(ctx context.Context) error {
 	}
 	wg.Wait()
 	return err
+}
+
+// snapshotAll takes snapshot of all nodes of the worker group
+func snapshotAll() {
+	var wg sync.WaitGroup
+	for _, n := range groups().nodes() {
+		wg.Add(1)
+		go func(n *node) {
+			defer wg.Done()
+			n.snapshot(0)
+		}(n)
+	}
+	wg.Wait()
 }
 
 // StopAllNodes stops all the nodes of the worker group.

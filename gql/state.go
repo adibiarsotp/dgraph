@@ -1,47 +1,44 @@
 /*
- * Copyright 2017 DGraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 // Package gql is responsible for lexing and parsing a GraphQL query/mutation.
 package gql
 
-import (
-	"github.com/dgraph-io/dgraph/lex"
-)
+import "github.com/adibiarsotp/dgraph/lex"
 
 const (
-	leftCurl     = '{'
-	rightCurl    = '}'
-	leftRound    = '('
-	rightRound   = ')'
-	leftSquare   = '['
-	rightSquare  = ']'
-	period       = '.'
-	comma        = ','
-	bang         = '!'
-	dollar       = '$'
-	queryMode    = 1
-	mutationMode = 2
-	fragmentMode = 3
-	schemaMode   = 4
-	equal        = '='
-	quote        = '"'
-	at           = '@'
-	colon        = ':'
-	lsThan       = '<'
-	grThan       = '>'
+	leftCurl    = '{'
+	rightCurl   = '}'
+	leftRound   = '('
+	rightRound  = ')'
+	leftSquare  = '['
+	rightSquare = ']'
+	period      = '.'
+	comma       = ','
+	bang        = '!'
+	dollar      = '$'
+	slash       = '/'
+	backslash   = '\\'
+	equal       = '='
+	quote       = '"'
+	at          = '@'
+	colon       = ':'
+	lsThan      = '<'
+	grThan      = '>'
 )
 
 // Constants representing type of different graphql lexed items.
@@ -58,23 +55,26 @@ const (
 	itemColon                                   // Colon
 	itemAt                                      // @
 	itemDollar                                  // $
+	itemRegex                                   // /
+	itemBackslash                               // \
 	itemMutationOp                              // mutation operation
 	itemMutationContent                         // mutation content
 	itemThreeDots                               // three dots (...)
 	itemLeftSquare
 	itemRightSquare
 	itemComma
+	itemMathOp
 )
 
 func lexInsideMutation(l *lex.Lexer) lex.StateFn {
+	l.Mode = lexInsideMutation
 	for {
 		switch r := l.Next(); {
 		case r == rightCurl:
 			l.Depth--
 			l.Emit(itemRightCurl)
 			if l.Depth == 0 {
-				l.Mode = 0 // Set it to default before levaving the mode.
-				return lexText
+				return lexTopLevel
 			}
 		case r == leftCurl:
 			l.Depth++
@@ -97,6 +97,7 @@ func lexInsideMutation(l *lex.Lexer) lex.StateFn {
 }
 
 func lexInsideSchema(l *lex.Lexer) lex.StateFn {
+	l.Mode = lexInsideSchema
 	for {
 		switch r := l.Next(); {
 		case r == rightRound:
@@ -107,8 +108,7 @@ func lexInsideSchema(l *lex.Lexer) lex.StateFn {
 			l.Depth--
 			l.Emit(itemRightCurl)
 			if l.Depth == 0 {
-				l.Mode = 0
-				return lexText
+				return lexTopLevel
 			}
 		case r == leftCurl:
 			l.Depth++
@@ -136,12 +136,44 @@ func lexInsideSchema(l *lex.Lexer) lex.StateFn {
 }
 
 func lexFuncOrArg(l *lex.Lexer) lex.StateFn {
+	l.Mode = lexFuncOrArg
 	var empty bool
 	for {
 		switch r := l.Next(); {
 		case r == at:
 			l.Emit(itemAt)
 			return lexDirective
+		case isNameBegin(r) || isNumber(r):
+			empty = false
+			return lexArgName
+		case r == slash:
+			// if argument starts with '/' it's a regex, otherwise it's a division
+			if empty {
+				empty = false
+				lexRegex(l)
+				l.Emit(itemRegex)
+				continue
+			}
+			fallthrough
+		case isMathOp(r):
+			l.Emit(itemMathOp)
+		case isInequalityOp(r):
+			if r == equal {
+				if !isInequalityOp(l.Peek()) {
+					l.Emit(itemEqual)
+					continue
+				}
+			}
+			if r == lsThan {
+				if !isSpace(l.Peek()) && l.Peek() != '=' {
+					// as long as its not '=' or ' '
+					return lexIRIRef
+				}
+			}
+			if isInequalityOp(l.Peek()) {
+				l.Next()
+			}
+			l.Emit(itemMathOp)
 		case r == leftRound:
 			l.Emit(itemLeftRound)
 			l.ArgDepth++
@@ -155,8 +187,7 @@ func lexFuncOrArg(l *lex.Lexer) lex.StateFn {
 				return l.Errorf("Empty Argument")
 			}
 			if l.ArgDepth == 0 {
-				l.InsideDirective = false
-				return lexText // Filter directive is done.
+				return lexQuery // Filter directive is done.
 			}
 		case r == lex.EOF:
 			return l.Errorf("Unclosed Brackets")
@@ -170,13 +201,8 @@ func lexFuncOrArg(l *lex.Lexer) lex.StateFn {
 			l.Emit(itemComma)
 		case isDollar(r):
 			l.Emit(itemDollar)
-		case isNameBegin(r) || isNumber(r):
-			empty = false
-			return lexArgName
 		case r == colon:
 			l.Emit(itemColon)
-		case r == equal:
-			l.Emit(itemEqual)
 		case isEndLiteral(r):
 			{
 				empty = false
@@ -184,8 +210,6 @@ func lexFuncOrArg(l *lex.Lexer) lex.StateFn {
 				l.Next()                    // Consume the " .
 				l.Emit(itemName)
 			}
-		case r == lsThan:
-			return lexIRIRef
 		case r == '[':
 			{
 				depth := 1
@@ -221,13 +245,14 @@ func lexFuncOrArg(l *lex.Lexer) lex.StateFn {
 }
 
 func lexTopLevel(l *lex.Lexer) lex.StateFn {
+	l.Mode = lexTopLevel
 Loop:
 	for {
 		switch r := l.Next(); {
 		case r == leftCurl:
 			l.Depth++ // one level down.
 			l.Emit(itemLeftCurl)
-			return lexText
+			return lexQuery
 		case r == rightCurl:
 			return l.Errorf("Too many right curl")
 		case r == lex.EOF:
@@ -240,10 +265,11 @@ Loop:
 			l.Next()
 			l.Emit(itemLeftRound)
 			l.ArgDepth++
-			return lexText
+			return lexQuery
+		case isSpace(r) || isEndOfLine(r):
+			l.Ignore()
 		case isNameBegin(r):
 			l.Backup()
-			l.Emit(itemText)
 			return lexOperationType
 		}
 	}
@@ -254,19 +280,10 @@ Loop:
 	return nil
 }
 
-// lexText lexes the input string and calls other lex functions.
-func lexText(l *lex.Lexer) lex.StateFn {
+// lexQuery lexes the input string and calls other lex functions.
+func lexQuery(l *lex.Lexer) lex.StateFn {
+	l.Mode = lexQuery
 	for {
-		if l.Mode == mutationMode {
-			return lexInsideMutation
-		} else if l.Mode == schemaMode {
-			return lexInsideSchema
-		} else if l.ArgDepth > 0 || l.InsideDirective {
-			return lexFuncOrArg
-		} else if l.Depth == 0 && l.Mode != fragmentMode {
-			return lexTopLevel
-		}
-
 		switch r := l.Next(); {
 		case r == period:
 			if l.Next() == period && l.Next() == period {
@@ -279,8 +296,8 @@ func lexText(l *lex.Lexer) lex.StateFn {
 		case r == rightCurl:
 			l.Depth--
 			l.Emit(itemRightCurl)
-			if l.Depth == 0 && l.Mode == fragmentMode {
-				l.Mode = 0
+			if l.Depth == 0 {
+				return lexTopLevel
 			}
 		case r == leftCurl:
 			l.Depth++
@@ -295,12 +312,14 @@ func lexText(l *lex.Lexer) lex.StateFn {
 			return lexName
 		case r == '#':
 			return lexComment
+		case r == '-':
+			l.Emit(itemMathOp)
 		case r == leftRound:
 			l.Emit(itemLeftRound)
 			l.AcceptRun(isSpace)
 			l.Ignore()
 			l.ArgDepth++
-			return lexText
+			return lexFuncOrArg
 		case r == colon:
 			l.Emit(itemColon)
 		case r == at:
@@ -318,7 +337,7 @@ func lexIRIRef(l *lex.Lexer) lex.StateFn {
 	if err := lex.LexIRIRef(l, itemName); err != nil {
 		return l.Errorf(err.Error())
 	}
-	return lexText
+	return l.Mode
 }
 
 // lexFilterFuncName expects input to look like equal("...", "...").
@@ -333,7 +352,7 @@ func lexFilterFuncName(l *lex.Lexer) lex.StateFn {
 		l.Emit(itemName)
 		break
 	}
-	return lexText
+	return l.Mode
 }
 
 // lexDirective is called right after we see a @.
@@ -344,7 +363,7 @@ func lexDirective(l *lex.Lexer) lex.StateFn {
 	}
 
 	l.Backup()
-	return lexText
+	return l.Mode
 }
 
 func lexName(l *lex.Lexer) lex.StateFn {
@@ -358,7 +377,7 @@ func lexName(l *lex.Lexer) lex.StateFn {
 		l.Emit(itemName)
 		break
 	}
-	return lexText
+	return l.Mode
 }
 
 // lexComment lexes a comment text.
@@ -367,7 +386,7 @@ func lexComment(l *lex.Lexer) lex.StateFn {
 		r := l.Next()
 		if isEndOfLine(r) {
 			l.Ignore()
-			return lexText
+			return l.Mode
 		}
 		if r == lex.EOF {
 			break
@@ -383,14 +402,14 @@ func lexNameMutation(l *lex.Lexer) lex.StateFn {
 	for {
 		// The caller already checked isNameBegin, and absorbed one rune.
 		r := l.Next()
-		if isNameBegin(r) {
+		if isNameSuffix(r) {
 			continue
 		}
 		l.Backup()
 		l.Emit(itemMutationOp)
 		break
 	}
-	return lexText
+	return l.Mode
 }
 
 // lexTextMutation lexes and absorbs the text inside a mutation operation block.
@@ -414,7 +433,7 @@ func lexTextMutation(l *lex.Lexer) lex.StateFn {
 		l.Emit(itemMutationContent)
 		break
 	}
-	return lexText
+	return lexInsideMutation
 }
 
 // This function is used to absorb the object value.
@@ -434,6 +453,22 @@ LOOP:
 	return lexTextMutation
 }
 
+func lexRegex(l *lex.Lexer) {
+LOOP:
+	for {
+		r := l.Next()
+		switch r {
+		case lex.EOF:
+			return
+		case '\\':
+			l.Next()
+		case '/':
+			break LOOP
+		}
+	}
+	l.AcceptRun(isRegexFlag)
+}
+
 // lexOperationType lexes a query or mutation or schema operation type.
 func lexOperationType(l *lex.Lexer) lex.StateFn {
 	for {
@@ -446,24 +481,22 @@ func lexOperationType(l *lex.Lexer) lex.StateFn {
 		word := l.Input[l.Start:l.Pos]
 		if word == "mutation" {
 			l.Emit(itemOpType)
-			l.Mode = mutationMode
+			return lexInsideMutation
 		} else if word == "fragment" {
 			l.Emit(itemOpType)
-			l.Mode = fragmentMode
+			return lexQuery
 		} else if word == "query" {
 			l.Emit(itemOpType)
-			l.Mode = queryMode
+			return lexQuery
 		} else if word == "schema" {
 			l.Emit(itemOpType)
-			l.Mode = schemaMode
+			return lexInsideSchema
 		} else {
-			if l.Mode == 0 {
-				l.Errorf("Invalid operation type")
-			}
+			l.Errorf("Invalid operation type: %s", word)
 		}
 		break
 	}
-	return lexText
+	return lexQuery
 }
 
 // lexArgName lexes and emits the name part of an argument.
@@ -477,7 +510,7 @@ func lexArgName(l *lex.Lexer) lex.StateFn {
 		l.Emit(itemName)
 		break
 	}
-	return lexText
+	return l.Mode
 }
 
 // isDollar returns true if the rune is a Dollar($).
@@ -520,23 +553,54 @@ func isNameBegin(r rune) bool {
 		return false
 	}
 }
-func isNumber(r rune) bool {
-	switch {
-	case (r >= '0' && r <= '9') || r == '-' || r == '+':
+
+func isMathOp(r rune) bool {
+	switch r {
+	case '+', '-', '*', '/', '%':
 		return true
 	default:
 		return false
 	}
 }
+
+func isInequalityOp(r rune) bool {
+	switch r {
+	case '<', '>', '=', '!':
+		return true
+	default:
+		return false
+	}
+}
+
+func isNumber(r rune) bool {
+	switch {
+	case (r >= '0' && r <= '9'):
+		return true
+	default:
+		return false
+	}
+}
+
 func isNameSuffix(r rune) bool {
-	if isNameBegin(r) {
+	if isMathOp(r) {
+		return false
+	}
+	if isNameBegin(r) || isNumber(r) {
 		return true
 	}
-	if isNumber(r) {
-		return true
-	}
-	if r == '.' || r == '-' || r == '!' { // Use by freebase.
+	if r == '.' /*|| r == '!'*/ { // Use by freebase.
 		return true
 	}
 	return false
+}
+
+func isRegexFlag(r rune) bool {
+	switch {
+	case r >= 'a' && r <= 'z':
+		return true
+	case r >= 'A' && r <= 'Z':
+		return true
+	default:
+		return false
+	}
 }

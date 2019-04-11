@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package worker
 
 import (
@@ -12,21 +29,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dgraph-io/badger/badger"
 	"github.com/stretchr/testify/require"
 	geom "github.com/twpayne/go-geom"
 	"github.com/twpayne/go-geom/encoding/wkb"
 
-	"github.com/dgraph-io/dgraph/group"
-	"github.com/dgraph-io/dgraph/posting"
-	"github.com/dgraph-io/dgraph/protos/facetsp"
-	"github.com/dgraph-io/dgraph/protos/graphp"
-	"github.com/dgraph-io/dgraph/protos/typesp"
-	"github.com/dgraph-io/dgraph/types"
+	"github.com/adibiarsotp/dgraph/group"
+	"github.com/adibiarsotp/dgraph/posting"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/types"
 
-	"github.com/dgraph-io/dgraph/rdf"
-	"github.com/dgraph-io/dgraph/schema"
-	"github.com/dgraph-io/dgraph/store"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/rdf"
+	"github.com/adibiarsotp/dgraph/schema"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 func populateGraphBackup(t *testing.T) {
@@ -34,7 +49,7 @@ func populateGraphBackup(t *testing.T) {
 		"<1> <friend> <5> <author0> .",
 		"<2> <friend> <5> <author0> .",
 		"<3> <friend> <5> .",
-		"<4> <friend> <5> <author0> (since=2005-05-02T15:04:05,close=true,age=33) .",
+		"<4> <friend> <5> <author0> (since=2005-05-02T15:04:05,close=true,age=33,game=\"football\") .",
 		"<1> <name> \"pho\\ton\" <author0> .",
 		"<2> <name> \"pho\\ton\"@en <author0> .",
 	}
@@ -56,21 +71,26 @@ func populateGraphBackup(t *testing.T) {
 	}
 }
 
-func initTestBackup(t *testing.T, schemaStr string) (string, *store.Store) {
+func initTestBackup(t *testing.T, schemaStr string) (string, *badger.KV) {
 	group.ParseGroupConfig("groups.conf")
 	schema.ParseBytes([]byte(schemaStr), 1)
 
 	dir, err := ioutil.TempDir("", "storetest_")
 	require.NoError(t, err)
 
-	ps, err := store.NewStore(dir)
-	require.NoError(t, err)
+	opt := badger.DefaultOptions
+	opt.Dir = dir
+	ps, err := badger.NewKV(&opt)
+	x.Check(err)
 
 	posting.Init(ps)
 	Init(ps)
-	val, err := (&typesp.Schema{ValueType: uint32(typesp.Posting_UID)}).Marshal()
+	val, err := (&protos.SchemaUpdate{ValueType: uint32(protos.Posting_UID)}).Marshal()
 	require.NoError(t, err)
-	ps.SetOne(x.SchemaKey("friend"), val)
+	ps.Set(x.SchemaKey("friend"), val)
+	val, err = (&protos.SchemaUpdate{ValueType: uint32(protos.Posting_UID)}).Marshal()
+	require.NoError(t, err)
+	ps.Set(x.SchemaKey("http://www.w3.org/2000/01/rdf-schema#range"), val)
 	populateGraphBackup(t)
 	time.Sleep(200 * time.Millisecond) // Let the index process jobs from channel.
 
@@ -79,7 +99,7 @@ func initTestBackup(t *testing.T, schemaStr string) (string, *store.Store) {
 
 func TestBackup(t *testing.T) {
 	// Index the name predicate. We ensure it doesn't show up on backup.
-	dir, ps := initTestBackup(t, "name:string @index")
+	dir, ps := initTestBackup(t, "name:string @index .")
 	defer os.RemoveAll(dir)
 	defer ps.Close()
 	// Remove already existing backup folders is any.
@@ -130,7 +150,7 @@ func TestBackup(t *testing.T) {
 			require.Contains(t, []string{"0x1", "0x2", "0x3", "0x4"}, nq.Subject)
 			// The only value we set was "photon".
 			if nq.ObjectValue != nil {
-				require.Equal(t, &graphp.Value{&graphp.Value_DefaultVal{"pho\\ton"}},
+				require.Equal(t, &protos.Value{&protos.Value_DefaultVal{"pho\\ton"}},
 					nq.ObjectValue)
 				// Test objecttype
 				if nq.Subject == "0x1" {
@@ -153,16 +173,19 @@ func TestBackup(t *testing.T) {
 			if nq.Subject == "0x4" {
 				require.Equal(t, "age", nq.Facets[0].Key)
 				require.Equal(t, "close", nq.Facets[1].Key)
-				require.Equal(t, "since", nq.Facets[2].Key)
+				require.Equal(t, "game", nq.Facets[2].Key)
+				require.Equal(t, "since", nq.Facets[3].Key)
 				// byte representation for facets.
-				require.Equal(t, []byte{0x21, 0x0, 0x0, 0x0}, nq.Facets[0].Value)
+				require.Equal(t, []byte{0x21, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0}, nq.Facets[0].Value)
 				require.Equal(t, []byte{0x1}, nq.Facets[1].Value)
+				require.Equal(t, []byte("football"), nq.Facets[2].Value)
 				require.Equal(t, "\x01\x00\x00\x00\x0e\xba\b8e\x00\x00\x00\x00\xff\xff",
-					string(nq.Facets[2].Value))
+					string(nq.Facets[3].Value))
 				// valtype for facets.
 				require.Equal(t, 1, int(nq.Facets[0].ValType))
 				require.Equal(t, 3, int(nq.Facets[1].ValType))
-				require.Equal(t, 4, int(nq.Facets[2].ValType))
+				require.Equal(t, 0, int(nq.Facets[2].ValType))
+				require.Equal(t, 4, int(nq.Facets[3].ValType))
 			}
 			// Test label
 			if nq.Subject != "0x3" {
@@ -191,10 +214,13 @@ func TestBackup(t *testing.T) {
 		for scanner.Scan() {
 			schemas, err := schema.Parse(scanner.Text())
 			require.NoError(t, err)
-			for _, s := range schemas {
-				// only schema we wrote is for friend
-				require.Equal(t, "friend", s.Predicate)
-				require.Equal(t, "uid", types.TypeID(s.ValueType).Name())
+			require.Equal(t, 1, len(schemas))
+			// We wrote schema for only two predicates
+			if schemas[0].Predicate == "friend" {
+				require.Equal(t, "uid", types.TypeID(schemas[0].ValueType).Name())
+			} else {
+				require.Equal(t, "http://www.w3.org/2000/01/rdf-schema#range", schemas[0].Predicate)
+				require.Equal(t, "uid", types.TypeID(schemas[0].ValueType).Name())
 			}
 			count = len(schemas)
 		}
@@ -209,7 +235,7 @@ func generateBenchValues() []kv {
 	byteInt := make([]byte, 4)
 	binary.LittleEndian.PutUint32(byteInt, 123)
 
-	fac := []*facetsp.Facet{
+	fac := []*protos.Facet{
 		{
 			Key:   "facetTest",
 			Value: []byte("testVal"),
@@ -220,7 +246,7 @@ func generateBenchValues() []kv {
 
 	// Posting_STRING   Posting_ValType = 0
 	// Posting_BINARY   Posting_ValType = 1
-	// Posting_INT32    Posting_ValType = 2
+	// Posting_INT    Posting_ValType = 2
 	// Posting_FLOAT    Posting_ValType = 3
 	// Posting_BOOL     Posting_ValType = 4
 	// Posting_DATE     Posting_ValType = 5
@@ -230,9 +256,9 @@ func generateBenchValues() []kv {
 	benchItems := []kv{
 		{
 			prefix: "testString",
-			list: &typesp.PostingList{
-				Postings: []*typesp.Posting{{
-					ValType: typesp.Posting_STRING,
+			list: &protos.PostingList{
+				Postings: []*protos.Posting{{
+					ValType: protos.Posting_STRING,
 					Value:   []byte("手機裡的眼淚"),
 					Uid:     uint64(65454),
 					Facets:  fac,
@@ -240,36 +266,36 @@ func generateBenchValues() []kv {
 			},
 		},
 		{prefix: "testGeo",
-			list: &typesp.PostingList{
-				Postings: []*typesp.Posting{{
-					ValType: typesp.Posting_GEO,
+			list: &protos.PostingList{
+				Postings: []*protos.Posting{{
+					ValType: protos.Posting_GEO,
 					Value:   geoData,
 					Uid:     uint64(65454),
 					Facets:  fac,
 				}},
 			}},
 		{prefix: "testPassword",
-			list: &typesp.PostingList{
-				Postings: []*typesp.Posting{{
-					ValType: typesp.Posting_PASSWORD,
+			list: &protos.PostingList{
+				Postings: []*protos.Posting{{
+					ValType: protos.Posting_PASSWORD,
 					Value:   []byte("test"),
 					Uid:     uint64(65454),
 					Facets:  fac,
 				}},
 			}},
 		{prefix: "testInt",
-			list: &typesp.PostingList{
-				Postings: []*typesp.Posting{{
-					ValType: typesp.Posting_INT32,
+			list: &protos.PostingList{
+				Postings: []*protos.Posting{{
+					ValType: protos.Posting_INT,
 					Value:   byteInt,
 					Uid:     uint64(65454),
 					Facets:  fac,
 				}},
 			}},
 		{prefix: "testUid",
-			list: &typesp.PostingList{
-				Postings: []*typesp.Posting{{
-					ValType: typesp.Posting_INT32,
+			list: &protos.PostingList{
+				Postings: []*protos.Posting{{
+					ValType: protos.Posting_INT,
 					Uid:     uint64(65454),
 					Facets:  fac,
 				}},

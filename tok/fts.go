@@ -1,23 +1,24 @@
 /*
- * Copyright 2017 Dgraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package tok
 
 import (
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/x"
 
 	"github.com/blevesearch/bleve/analysis/analyzer/custom"
 	"github.com/blevesearch/bleve/analysis/token/lowercase"
@@ -37,6 +38,7 @@ var (
 )
 
 const (
+	FTSTokenizerName   = "fulltext"
 	normalizerFormNFKC = "nfkc"
 	normalizerName     = "nfkc_normalizer"
 )
@@ -111,7 +113,7 @@ func defineTermAnalyzer() {
 
 // default full text search analyzer - does english stop-words removal and Porter stemming
 func defineDefaultFullTextAnalyzer() {
-	_, err := bleveCache.DefineAnalyzer("fulltext", map[string]interface{}{
+	_, err := bleveCache.DefineAnalyzer(FTSTokenizerName, map[string]interface{}{
 		"type":      custom.Name,
 		"tokenizer": unicode.Name,
 		"token_filters": []string{
@@ -126,7 +128,7 @@ func defineDefaultFullTextAnalyzer() {
 // full text search analyzer - does language-specific stop-words removal and stemming
 func defineAnalyzer(lang string) {
 	ln := countryCode(lang)
-	_, err := bleveCache.DefineAnalyzer(ftsTokenizerName(ln), map[string]interface{}{
+	_, err := bleveCache.DefineAnalyzer(FtsTokenizerName(ln), map[string]interface{}{
 		"type":      custom.Name,
 		"tokenizer": unicode.Name,
 		"token_filters": []string{
@@ -139,8 +141,8 @@ func defineAnalyzer(lang string) {
 	x.Check(err)
 }
 
-func ftsTokenizerName(lang string) string {
-	return "fulltext" + lang
+func FtsTokenizerName(lang string) string {
+	return FTSTokenizerName + lang
 }
 
 func stemmerName(lang string) string {
