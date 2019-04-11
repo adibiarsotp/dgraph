@@ -17,13 +17,24 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
-	"io/ioutil"
 	"net/http"
-	"strconv"
+	"regexp"
+
+	"github.com/adibiarsotp/dgraph/x"
 )
+
+func homeHandler(h http.Handler, reg *regexp.Regexp) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// If path is '/hexValue', lets return the index.html.
+		if reg.MatchString(r.URL.Path) {
+			http.ServeFile(w, r, uiDir+"/index.html")
+			return
+		}
+
+		h.ServeHTTP(w, r)
+	})
+}
 
 type keyword struct {
 	// Type could be a predicate, function etc.
@@ -38,6 +49,11 @@ type keywords struct {
 // Used to return a list of keywords, so that UI can show them for autocompletion.
 func keywordHandler(w http.ResponseWriter, r *http.Request) {
 	addCorsHeaders(w)
+	if r.Method != "GET" {
+		http.Error(w, x.ErrorInvalidMethod, http.StatusBadRequest)
+		return
+	}
+
 	var kws keywords
 	predefined := []string{
 		"@facets",
@@ -51,18 +67,29 @@ func keywordHandler(w http.ResponseWriter, r *http.Request) {
 		"anyoftext",
 		"contains",
 		"count",
+		"delete",
+		"exact",
 		"first",
+		"fulltext",
 		"func",
-		"geq",
+		"ge",
 		"id",
+		"index",
 		"intersects",
-		"leq",
+		"le",
+		"mutation",
 		"near",
 		"offset",
 		"or",
 		"orderasc",
 		"orderdesc",
+		"recurse",
+		"regex",
+		"reverse",
 		"schema",
+		"set",
+		"term",
+		"tokenizer",
 		"within",
 	}
 
@@ -78,34 +105,4 @@ func keywordHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Write(js)
-}
-
-func replacePort(h http.Handler, indexHtml string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// If path is '/', lets return the index.html that we have in memory
-		// after replacing the PORT.
-		if r.URL.Path == "/" {
-			w.Header().Set("Content-Type", "text/html; charset=UTF-8")
-			if indexHtml == "" {
-				w.WriteHeader(404)
-				fmt.Fprint(w, "Page not found")
-				return
-			}
-
-			fmt.Fprint(w, indexHtml)
-			return
-		}
-
-		// Else lets serve the contents (js/css) of the ui directory.
-		h.ServeHTTP(w, r)
-	})
-}
-
-func substitutePort() string {
-	indexHtml, err := ioutil.ReadFile(*uiDir + "/index.html")
-	if err == nil {
-		indexHtml = bytes.Replace(indexHtml, []byte("__SERVER_PORT__"), []byte(strconv.Itoa(*port)), 1)
-		return string(indexHtml)
-	}
-	return ""
 }

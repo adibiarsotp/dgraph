@@ -1,7 +1,7 @@
 #!/bin/bash
 
 SRC="$( cd -P "$( dirname "${BASH_SOURCE[0]}" )" && pwd )/.."
-TMP=$(mktemp -p /tmp dgraph-coverage-XXXXX.txt)
+TMP=$(mktemp /tmp/dgraph-coverage-XXXXX.txt)
 
 BUILD=$1
 # If build variable is empty then we set it.
@@ -15,18 +15,7 @@ if [ -z "$OUT" ]; then
 fi
 rm -f $OUT
 
-ROCKSDBDIR=$BUILD/rocksdb-5.1.4
-
-# build flags needed for rocksdb
-export CGO_CPPFLAGS="-I${ROCKSDBDIR}/include"
-export CGO_LDFLAGS="-L${ROCKSDBDIR}"
-export LD_LIBRARY_PATH="${ROCKSDBDIR}:${LD_LIBRARY_PATH}"
-
 set -e
-
-# Lets install the dependencies that are not vendored in anymore.
-go get -d golang.org/x/net/context
-go get -d google.golang.org/grpc/...
 
 pushd $SRC &> /dev/null
 

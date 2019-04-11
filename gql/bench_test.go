@@ -1,20 +1,37 @@
+/*
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package gql
 
 import (
 	"testing"
 
-	"github.com/dgraph-io/dgraph/schema"
+	"github.com/adibiarsotp/dgraph/schema"
 	"github.com/stretchr/testify/require"
 )
 
-var sc = `type.object.name.en: string @index
-film.film.initial_release_date: date @index`
+var sc = `type.object.name.en: string @index .
+film.film.initial_release_date: date @index .`
 
 func benchmarkParsingHelper(b *testing.B, q string) {
 	schema.ParseBytes([]byte(sc), 1)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_, err := Parse(q)
+		_, err := Parse(Request{Str: q})
 		require.NoError(b, err)
 	}
 }
@@ -24,7 +41,7 @@ func benchmarkParsingParallelHelper(b *testing.B, q string) {
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			_, err := Parse(q)
+			_, err := Parse(Request{Str: q})
 			require.NoError(b, err)
 		}
 	})
@@ -33,20 +50,20 @@ func benchmarkParsingParallelHelper(b *testing.B, q string) {
 func Benchmark_directors(b *testing.B)             { benchmarkParsingHelper(b, q1) }
 func Benchmark_Movies(b *testing.B)                { benchmarkParsingHelper(b, q2) }
 func Benchmark_Filters(b *testing.B)               { benchmarkParsingHelper(b, q3) }
-func Benchmark_Geq(b *testing.B)                   { benchmarkParsingHelper(b, q4) }
+func Benchmark_ge(b *testing.B)                    { benchmarkParsingHelper(b, q4) }
 func Benchmark_Date(b *testing.B)                  { benchmarkParsingHelper(b, q5) }
 func Benchmark_Mutation(b *testing.B)              { benchmarkParsingHelper(b, m1) }
 func Benchmark_Mutation1000(b *testing.B)          { benchmarkParsingHelper(b, m1000) }
 func Benchmark_directors_parallel(b *testing.B)    { benchmarkParsingParallelHelper(b, q1) }
 func Benchmark_Movies_parallel(b *testing.B)       { benchmarkParsingParallelHelper(b, q2) }
 func Benchmark_Filters_parallel(b *testing.B)      { benchmarkParsingParallelHelper(b, q3) }
-func Benchmark_Geq_parallel(b *testing.B)          { benchmarkParsingParallelHelper(b, q4) }
+func Benchmark_ge_parallel(b *testing.B)           { benchmarkParsingParallelHelper(b, q4) }
 func Benchmark_Date_parallel(b *testing.B)         { benchmarkParsingParallelHelper(b, q5) }
 func Benchmark_Mutation_parallel(b *testing.B)     { benchmarkParsingParallelHelper(b, m1) }
 func Benchmark_Mutation1000_parallel(b *testing.B) { benchmarkParsingParallelHelper(b, m1000) }
 
 var q1 = `{
-  debug(allofterms("type.object.name.en", "steven spielberg")) {
+  debug(func: allofterms(type.object.name.en, "steven spielberg")) {
     type.object.name.en
     film.director.film {
       type.object.name.en
@@ -68,7 +85,7 @@ var q1 = `{
 }`
 
 var q2 = `{
-  debug(anyofterms("type.object.name.en","big lebowski")) {
+  debug(func: anyofterms(type.object.name.en,"big lebowski")) {
     type.object.name.en
     film.film.initial_release_date
     film.film.country
@@ -89,7 +106,7 @@ var q2 = `{
 var q3 = `{
   debug(id: m.06pj8) {
     type.object.name.en
-    film.director.film @filter(allofterms("type.object.name.en", "jones indiana") or allofterms("type.object.name.en", "jurassic park"))  {
+    film.director.film @filter(allofterms(type.object.name.en, "jones indiana") or allofterms(type.object.name.en, "jurassic park"))  {
 	      _uid_
 	      type.object.name.en
      }
@@ -99,7 +116,7 @@ var q3 = `{
 var q4 = `{
   debug(id: m.0bxtg) {
     type.object.name.en
-    film.director.film @filter(geq("film.film.initial_release_date", "1970-01-01")) {
+    film.director.film @filter(ge(film.film.initial_release_date, "1970-01-01")) {
       film.film.initial_release_date
       type.object.name.en
     }
@@ -107,7 +124,7 @@ var q4 = `{
 }`
 
 var q5 = `{
-   debug(allofterms("type.object.name.en", "steven spielberg")) {
+   debug(func: allofterms(type.object.name.en, "steven spielberg")) {
      type.object.name.en
      film.director.film(order: film.film.initial_release_date) {
        type.object.name.en

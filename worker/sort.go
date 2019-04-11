@@ -1,28 +1,49 @@
+/*
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package worker
 
 import (
+	"bytes"
+	"fmt"
+	"strings"
+
+	"github.com/dgraph-io/badger/badger"
 	"golang.org/x/net/context"
 
-	"github.com/dgraph-io/dgraph/group"
-	"github.com/dgraph-io/dgraph/posting"
-	"github.com/dgraph-io/dgraph/protos/taskp"
-	"github.com/dgraph-io/dgraph/protos/workerp"
-	"github.com/dgraph-io/dgraph/schema"
-	"github.com/dgraph-io/dgraph/tok"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/group"
+	"github.com/adibiarsotp/dgraph/posting"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/schema"
+	"github.com/adibiarsotp/dgraph/tok"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
-var emptySortResult taskp.SortResult
+var emptySortResult protos.SortResult
 
 // SortOverNetwork sends sort query over the network.
-func SortOverNetwork(ctx context.Context, q *taskp.Sort) (*taskp.SortResult, error) {
+func SortOverNetwork(ctx context.Context, q *protos.SortMessage) (*protos.SortResult, error) {
 	gid := group.BelongsTo(q.Attr)
 	x.Trace(ctx, "worker.Sort attr: %v groupId: %v", q.Attr, gid)
 
 	if groups().ServesGroup(gid) {
 		// No need for a network call, as this should be run from within this instance.
-		return processSort(q)
+		return processSort(ctx, q)
 	}
 
 	// Send this over the network.
@@ -37,8 +58,8 @@ func SortOverNetwork(ctx context.Context, q *taskp.Sort) (*taskp.SortResult, err
 	defer pl.Put(conn)
 	x.Trace(ctx, "Sending request to %v", addr)
 
-	c := workerp.NewWorkerClient(conn)
-	var reply *taskp.SortResult
+	c := protos.NewWorkerClient(conn)
+	var reply *protos.SortResult
 	cerr := make(chan error, 1)
 	go func() {
 		var err error
@@ -58,22 +79,22 @@ func SortOverNetwork(ctx context.Context, q *taskp.Sort) (*taskp.SortResult, err
 }
 
 // Sort is used to sort given UID matrix.
-func (w *grpcWorker) Sort(ctx context.Context, s *taskp.Sort) (*taskp.SortResult, error) {
+func (w *grpcWorker) Sort(ctx context.Context, s *protos.SortMessage) (*protos.SortResult, error) {
 	if ctx.Err() != nil {
 		return &emptySortResult, ctx.Err()
 	}
 
 	gid := group.BelongsTo(s.Attr)
-	//x.Trace(ctx, "Attribute: %q NumUids: %v groupId: %v Sort", q.Attr(), q.UidsLength(), gid)
+	x.Trace(ctx, "Sorting: Attribute: %q groupId: %v Sort", s.Attr, gid)
 
-	var reply *taskp.SortResult
+	var reply *protos.SortResult
 	x.AssertTruef(groups().ServesGroup(gid),
 		"attr: %q groupId: %v Request sent to wrong server.", s.Attr, gid)
 
 	c := make(chan error, 1)
 	go func() {
 		var err error
-		reply, err = processSort(s)
+		reply, err = processSort(ctx, s)
 		c <- err
 	}()
 
@@ -90,6 +111,137 @@ var (
 	errDone     = x.Errorf("Done processing buckets")
 )
 
+func sortWithoutIndex(ctx context.Context, ts *protos.SortMessage) (*protos.SortResult, error) {
+	n := len(ts.UidMatrix)
+	r := new(protos.SortResult)
+	// Sort and paginate directly as it'd be expensive to iterate over the index which
+	// might have millions of keys just for retrieving some values.
+	sType, err := schema.State().TypeOf(ts.Attr)
+	if err != nil || !sType.IsScalar() {
+		return r, x.Errorf("Cannot sort attribute %s of type object.", ts.Attr)
+	}
+
+	for i := 0; i < n; i++ {
+		select {
+		case <-ctx.Done():
+			return nil, nil
+		default:
+			// Copy, otherwise it'd affect the destUids and hence the srcUids of Next level.
+			tempList := &protos.List{ts.UidMatrix[i].Uids}
+			if err := sortByValue(ts.Attr, ts.Langs, tempList, sType, ts.Desc); err != nil {
+				return r, err
+			}
+			paginate(int(ts.Offset), int(ts.Count), tempList)
+			r.UidMatrix = append(r.UidMatrix, tempList)
+		}
+	}
+	return r, nil
+}
+
+func sortWithIndex(ctx context.Context, ts *protos.SortMessage) (*protos.SortResult, error) {
+	n := len(ts.UidMatrix)
+	out := make([]intersectedList, n)
+	for i := 0; i < n; i++ {
+		// offsets[i] is the offset for i-th posting list. It gets decremented as we
+		// iterate over buckets.
+		out[i].offset = int(ts.Offset)
+		var emptyList protos.List
+		out[i].ulist = &emptyList
+	}
+	r := new(protos.SortResult)
+	// Iterate over every bucket / token.
+	iterOpt := badger.DefaultIteratorOptions
+	iterOpt.Reverse = ts.Desc
+	iterOpt.FetchValues = false
+	it := pstore.NewIterator(iterOpt)
+	defer it.Close()
+
+	typ, err := schema.State().TypeOf(ts.Attr)
+	if err != nil {
+		return &emptySortResult, fmt.Errorf("Attribute %s not defined in schema", ts.Attr)
+	}
+
+	// Get the tokenizers and choose the corresponding one.
+	if !schema.State().IsIndexed(ts.Attr) {
+		return &emptySortResult, x.Errorf("Attribute %s is not indexed.", ts.Attr)
+	}
+
+	tokenizers := schema.State().Tokenizer(ts.Attr)
+	var tokenizer tok.Tokenizer
+	for _, t := range tokenizers {
+		// Get the first sortable index.
+		if t.IsSortable() {
+			tokenizer = t
+			break
+		}
+	}
+
+	if tokenizer == nil {
+		// String type can have multiple tokenizers, only one of which is
+		// sortable.
+		if typ == types.StringID {
+			return &emptySortResult, x.Errorf("Attribute:%s does not have exact index for sorting.",
+				ts.Attr)
+		}
+		// Other types just have one tokenizer, so if we didn't find a
+		// sortable tokenizer, then attribute isn't sortable.
+		return &emptySortResult, x.Errorf("Attribute:%s is not sortable.", ts.Attr)
+	}
+
+	indexPrefix := x.IndexKey(ts.Attr, string(tokenizer.Identifier()))
+	var seekKey []byte
+	if !ts.Desc {
+		// We need to seek to the first key of this index type.
+		seekKey = indexPrefix
+	} else {
+		// We need to reach the last key of this index type.
+		seekKey = x.IndexKey(ts.Attr, string(tokenizer.Identifier()+1))
+	}
+	it.Seek(seekKey)
+
+BUCKETS:
+
+	// Outermost loop is over index buckets.
+	for it.Valid() {
+		key := it.Item().Key()
+		if !bytes.HasPrefix(key, indexPrefix) {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return nil, nil
+		default:
+			k := x.Parse(key)
+			x.AssertTrue(k != nil)
+			x.AssertTrue(k.IsIndex())
+			token := k.Term
+			x.Trace(ctx, "processSort: Token: %s", token)
+			// Intersect every UID list with the index bucket, and update their
+			// results (in out).
+			err := intersectBucket(ts, ts.Attr, token, out)
+			switch err {
+			case errDone:
+				break BUCKETS
+			case errContinue:
+				// Continue iterating over tokens / index buckets.
+			default:
+				return &emptySortResult, err
+			}
+			it.Next()
+		}
+	}
+
+	for _, il := range out {
+		r.UidMatrix = append(r.UidMatrix, il.ulist)
+	}
+	select {
+	case <-ctx.Done():
+		return nil, nil
+	default:
+		return r, nil
+	}
+}
+
 // processSort does sorting with pagination. It works by iterating over index
 // buckets. As it iterates, it intersects with each UID list of the UID
 // matrix. To optimize for pagination, we maintain the "offsets and sizes" or
@@ -97,104 +249,59 @@ var (
 // bucket if we haven't hit the offset. We stop getting results when we got
 // enough for our pagination params. When all the UID lists are done, we stop
 // iterating over the index.
-func processSort(ts *taskp.Sort) (*taskp.SortResult, error) {
-	attr := ts.Attr
-	x.AssertTruef(ts.Count > 0,
-		("We do not yet support negative or infinite count with sorting: %s %d. " +
-			"Try flipping order and return first few elements instead."),
-		attr, ts.Count)
-
-	n := len(ts.UidMatrix)
-	out := make([]intersectedList, n)
-	for i := 0; i < n; i++ {
-		// offsets[i] is the offset for i-th posting list. It gets decremented as we
-		// iterate over buckets.
-		out[i].offset = int(ts.Offset)
-		var emptyList taskp.List
-		out[i].ulist = &emptyList
-		out[i].excludeSet = make(map[uint64]struct{})
+func processSort(ctx context.Context, ts *protos.SortMessage) (*protos.SortResult, error) {
+	if ts.Count < 0 {
+		return nil, x.Errorf("We do not yet support negative or infinite count with sorting: %s %d. "+
+			"Try flipping order and return first few elements instead.", ts.Attr, ts.Count)
+	}
+	attrData := strings.Split(ts.Attr, "@")
+	ts.Attr = attrData[0]
+	if len(attrData) == 2 {
+		ts.Langs = strings.Split(attrData[1], ":")
 	}
 
-	// Iterate over every bucket / token.
-	it := pstore.NewIterator()
-	defer it.Close()
-
-	// Get the tokenizers and choose the corresponding one.
-	if !schema.State().IsIndexed(attr) {
-		return nil, x.Errorf("Attribute %s is not indexed.", attr)
+	type result struct {
+		err error
+		res *protos.SortResult
 	}
-
-	tokenizers := schema.State().Tokenizer(attr)
-	var tok tok.Tokenizer
-	for _, t := range tokenizers {
-		// Get the first sortable index.
-		if t.IsSortable() {
-			tok = t
-			break
+	cctx, cancel := context.WithCancel(ctx)
+	resCh := make(chan result, 2)
+	go func() {
+		r, err := sortWithoutIndex(cctx, ts)
+		resCh <- result{
+			res: r,
+			err: err,
 		}
-	}
-	if tok == nil {
-		return nil, x.Errorf("Attribute:%s does not have proper index",
-			attr)
-	}
+	}()
 
-	indexPrefix := x.IndexKey(attr, string(tok.Identifier()))
-	if !ts.Desc {
-		// We need to seek to the first key of this index type.
-		seekKey := indexPrefix
-		it.Seek(seekKey)
+	go func() {
+		r, err := sortWithIndex(cctx, ts)
+		resCh <- result{
+			res: r,
+			err: err,
+		}
+	}()
+
+	r := <-resCh
+	if r.err == nil {
+		cancel()
+		// wait for other goroutine to get cancelled
+		<-resCh
 	} else {
-		// We need to reach the last key of this index type.
-		seekKey := x.IndexKey(attr, string(tok.Identifier()+1))
-		it.SeekForPrev(seekKey)
+		x.TraceError(ctx, r.err)
+		r = <-resCh
 	}
-
-BUCKETS:
-
-	// Outermost loop is over index buckets.
-	for it.ValidForPrefix(indexPrefix) {
-		k := x.Parse(it.Key().Data())
-		x.AssertTrue(k != nil)
-		x.AssertTrue(k.IsIndex())
-		token := k.Term
-
-		// Intersect every UID list with the index bucket, and update their
-		// results (in out).
-		err := intersectBucket(ts, attr, token, out)
-		switch err {
-		case errDone:
-			break BUCKETS
-		case errContinue:
-			// Continue iterating over tokens / index buckets.
-		default:
-			return &emptySortResult, err
-		}
-		if ts.Desc {
-			it.Prev()
-		} else {
-			it.Next()
-		}
-	}
-
-	r := new(taskp.SortResult)
-	for _, il := range out {
-		r.UidMatrix = append(r.UidMatrix, il.ulist)
-	}
-	return r, nil
+	return r.res, r.err
 }
 
 type intersectedList struct {
 	offset int
-	ulist  *taskp.List
-
-	// For term index, a UID might appear in multiple buckets. We want to dedup.
-	// We cannot do this at the end of the sort because we do need to track offsets and counts.
-	excludeSet map[uint64]struct{}
+	ulist  *protos.List
 }
 
 // intersectBucket intersects every UID list in the UID matrix with the
 // indexed bucket.
-func intersectBucket(ts *taskp.Sort, attr, token string, out []intersectedList) error {
+func intersectBucket(ts *protos.SortMessage, attr, token string, out []intersectedList) error {
 	count := int(ts.Count)
 	sType, err := schema.State().TypeOf(attr)
 	if err != nil || !sType.IsScalar() {
@@ -215,8 +322,7 @@ func intersectBucket(ts *taskp.Sort, attr, token string, out []intersectedList) 
 
 		// Intersect index with i-th input UID list.
 		listOpt := posting.ListOptions{
-			Intersect:  ul,
-			ExcludeSet: il.excludeSet,
+			Intersect: ul,
 		}
 		result := pl.Uids(listOpt) // The actual intersection work is done here.
 		n := len(result.Uids)
@@ -231,7 +337,9 @@ func intersectBucket(ts *taskp.Sort, attr, token string, out []intersectedList) 
 
 		// We are within the page. We need to apply sorting.
 		// Sort results by value before applying offset.
-		sortByValue(attr, ts.Langs, result, scalar, ts.Desc)
+		if err := sortByValue(attr, ts.Langs, result, scalar, ts.Desc); err != nil {
+			return err
+		}
 
 		if il.offset > 0 {
 			// Apply the offset.
@@ -251,7 +359,6 @@ func intersectBucket(ts *taskp.Sort, attr, token string, out []intersectedList) 
 		for j := 0; j < n; j++ {
 			uid := result.Uids[j]
 			il.ulist.Uids = append(il.ulist.Uids, uid)
-			il.excludeSet[uid] = struct{}{}
 		}
 	} // end for loop over UID lists in UID matrix.
 
@@ -268,19 +375,29 @@ func intersectBucket(ts *taskp.Sort, attr, token string, out []intersectedList) 
 	return errDone
 }
 
+func paginate(offset, count int, dest *protos.List) {
+	start, end := x.PageRange(count, offset, len(dest.Uids))
+	dest.Uids = dest.Uids[start:end]
+}
+
 // sortByValue fetches values and sort UIDList.
-func sortByValue(attr string, langs []string, ul *taskp.List, typ types.TypeID, desc bool) error {
+func sortByValue(attr string, langs []string, ul *protos.List, typ types.TypeID, desc bool) error {
 	lenList := len(ul.Uids)
+	var uids []uint64
 	values := make([]types.Val, 0, lenList)
 	for i := 0; i < lenList; i++ {
 		uid := ul.Uids[i]
 		val, err := fetchValue(uid, attr, langs, typ)
 		if err != nil {
-			return err
+			// If a value is missing, skip that UID in the result.
+			continue
 		}
+		uids = append(uids, uid)
 		values = append(values, val)
 	}
-	return types.Sort(typ, values, ul, desc)
+	err := types.Sort(values, &protos.List{uids}, desc)
+	ul.Uids = uids
+	return err
 }
 
 // fetchValue gets the value for a given UID.

@@ -1,17 +1,18 @@
 /*
- * Copyright 2015 DGraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 // Package rdf package parses N-Quad statements based on
@@ -21,7 +22,8 @@ package rdf
 import (
 	"strconv"
 
-	"github.com/dgraph-io/dgraph/lex"
+	"github.com/adibiarsotp/dgraph/lex"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 // The constants represent different types of lexed Items possible for an rdf N-Quad.
@@ -40,6 +42,7 @@ const (
 	itemEqual                              // equal, 16
 	itemLeftRound                          // '(', 17
 	itemRightRound                         // ')', 18
+	itemStar                               // *, 19
 )
 
 // These constants keep a track of the depth while parsing an rdf N-Quad.
@@ -114,6 +117,12 @@ Loop:
 			}
 			return lexComment
 
+		case r == '*':
+			if l.Depth != atObject && l.Depth != atPredicate {
+				return l.Errorf("'*' only allowed at predicate/object in del mutations")
+			}
+			l.Depth++
+			l.Emit(itemStar)
 		case r == leftRound:
 			if l.Depth > atObject {
 				l.Backup()
@@ -323,7 +332,8 @@ func lexObjectType(l *lex.Lexer) lex.StateFn {
 
 func lexObject(l *lex.Lexer) lex.StateFn {
 	r := l.Next()
-	// The object can be an IRI, blank node or a literal.
+	// The object can be an IRI, blank node, literal.
+
 	if r == lsThan {
 		l.Depth++
 		return lexIRIRef(l, itemObject, lexText)
@@ -387,6 +397,11 @@ forLoop:
 		case r == lex.EOF:
 			l.Emit(lex.ItemEOF)
 			return nil
+		case r == quote:
+			if err := lexQuotedString(l); err != nil {
+				return l.Errorf(err.Error())
+			}
+			l.Emit(itemText)
 		default:
 			l.AcceptRun(func(r rune) bool {
 				return r != equal && !isSpace(r) && r != rightRound && r != comma
@@ -409,6 +424,31 @@ func lexComment(l *lex.Lexer) lex.StateFn {
 	l.Emit(itemComment)
 	l.Emit(lex.ItemEOF)
 	return nil // Stop the run loop.
+}
+
+func lexQuotedString(l *lex.Lexer) error {
+	l.Backup()
+	r := l.Next()
+	if r != quote {
+		return x.Errorf("String should start with quote.")
+	}
+	for {
+		r := l.Next()
+		if r == lex.EOF {
+			return x.Errorf("Unexpected end of input.")
+		}
+		if r == '\\' {
+			r := l.Next()
+			if !isEscChar(r) {
+				return x.Errorf("Not a valid escape char: %v", r)
+			}
+			continue // eat the next char
+		}
+		if r == quote {
+			break
+		}
+	}
+	return nil
 }
 
 func isClosingBracket(r rune) bool {

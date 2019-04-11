@@ -1,17 +1,18 @@
 /*
- * Copyright 2015 DGraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package rdf
@@ -23,60 +24,57 @@ import (
 	"strings"
 	"unicode"
 
-	farm "github.com/dgryski/go-farm"
-
-	"github.com/dgraph-io/dgraph/lex"
-	"github.com/dgraph-io/dgraph/protos/graphp"
-	"github.com/dgraph-io/dgraph/protos/taskp"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/types/facets"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/lex"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/types/facets"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
-var emptyEdge taskp.DirectedEdge
+var emptyEdge protos.DirectedEdge
 var (
-	ErrEmpty = errors.New("rdf: harmless error, e.g. comment line")
+	ErrEmpty      = errors.New("rdf: harmless error, e.g. comment line")
+	ErrInvalidUID = errors.New("UID has to be greater than one.")
 )
 
-// Gets the uid corresponding to an xid from the posting list which stores the
-// mapping.
-func GetUid(xid string) (uint64, error) {
+// Gets the uid corresponding
+func ParseUid(xid string) (uint64, error) {
 	// If string represents a UID, convert to uint64 and return.
 	uid, err := strconv.ParseUint(xid, 0, 64)
 	if err != nil {
-		return farm.Fingerprint64([]byte(xid)), nil
+		return 0, err
 	}
 	if uid == 0 {
-		return 0, x.Errorf("UID has to be greater than zero.")
+		return 0, ErrInvalidUID
 	}
 	return uid, nil
 }
 
 type NQuad struct {
-	*graphp.NQuad
+	*protos.NQuad
 }
 
-func typeValFrom(val *graphp.Value) types.Val {
+func typeValFrom(val *protos.Value) types.Val {
 	switch val.Val.(type) {
-	case *graphp.Value_BytesVal:
+	case *protos.Value_BytesVal:
 		return types.Val{types.BinaryID, val.GetBytesVal()}
-	case *graphp.Value_IntVal:
-		return types.Val{types.Int32ID, val.GetIntVal()}
-	case *graphp.Value_StrVal:
+	case *protos.Value_IntVal:
+		return types.Val{types.IntID, val.GetIntVal()}
+	case *protos.Value_StrVal:
 		return types.Val{types.StringID, val.GetStrVal()}
-	case *graphp.Value_BoolVal:
+	case *protos.Value_BoolVal:
 		return types.Val{types.BoolID, val.GetBoolVal()}
-	case *graphp.Value_DoubleVal:
+	case *protos.Value_DoubleVal:
 		return types.Val{types.FloatID, val.GetDoubleVal()}
-	case *graphp.Value_GeoVal:
+	case *protos.Value_GeoVal:
 		return types.Val{types.GeoID, val.GetGeoVal()}
-	case *graphp.Value_DateVal:
+	case *protos.Value_DateVal:
 		return types.Val{types.DateID, val.GetDateVal()}
-	case *graphp.Value_DatetimeVal:
+	case *protos.Value_DatetimeVal:
 		return types.Val{types.DateTimeID, val.GetDatetimeVal()}
-	case *graphp.Value_PasswordVal:
+	case *protos.Value_PasswordVal:
 		return types.Val{types.PasswordID, val.GetPasswordVal()}
-	case *graphp.Value_DefaultVal:
+	case *protos.Value_DefaultVal:
 		return types.Val{types.DefaultID, val.GetDefaultVal()}
 	}
 	return types.Val{types.StringID, ""}
@@ -101,13 +99,13 @@ func byteVal(nq NQuad) ([]byte, error) {
 
 // ToEdge is useful when you want to find the UID corresponding to XID for
 // just one edge. The method doesn't automatically generate a UID for an XID.
-func (nq NQuad) ToEdge() (*taskp.DirectedEdge, error) {
+func (nq NQuad) ToEdge() (*protos.DirectedEdge, error) {
 	var err error
-	sid, err := GetUid(nq.Subject)
+	sid, err := ParseUid(nq.Subject)
 	if err != nil {
 		return nil, err
 	}
-	out := &taskp.DirectedEdge{
+	out := &protos.DirectedEdge{
 		Attr:   nq.Predicate,
 		Label:  nq.Label,
 		Lang:   nq.Lang,
@@ -117,35 +115,40 @@ func (nq NQuad) ToEdge() (*taskp.DirectedEdge, error) {
 
 	switch nq.valueType() {
 	case x.ValueUid:
-		oid, err := GetUid(nq.ObjectId)
+		oid, err := ParseUid(nq.ObjectId)
 		if err != nil {
 			return nil, err
 		}
 		out.ValueId = oid
-	case x.ValuePlain, x.ValueLang:
+	case x.ValuePlain, x.ValueMulti:
 		if err = copyValue(out, nq); err != nil {
 			return &emptyEdge, err
 		}
 	}
+
 	return out, nil
 }
 
-func toUid(xid string, newToUid map[string]uint64) (uid uint64, err error) {
-	if id, present := newToUid[xid]; present {
+func toUid(subject string, newToUid map[string]uint64) (uid uint64, err error) {
+	if id, err := ParseUid(subject); err == nil || err == ErrInvalidUID {
 		return id, err
 	}
-	return GetUid(xid)
+	// It's an xid
+	if id, present := newToUid[subject]; present {
+		return id, err
+	}
+	return 0, x.Errorf("uid not found/generated for xid %s\n", subject)
 }
 
-// ToEdgeUsing determines the UIDs for the provided XIDs and populates the
+// ToEdgeUsing determines the UIDs for the provided XIDs using the
 // xidToUid map.
-func (nq NQuad) ToEdgeUsing(newToUid map[string]uint64) (*taskp.DirectedEdge, error) {
+func (nq NQuad) ToEdgeUsing(newToUid map[string]uint64) (*protos.DirectedEdge, error) {
 	var err error
 	uid, err := toUid(nq.Subject, newToUid)
 	if err != nil {
 		return nil, err
 	}
-	out := &taskp.DirectedEdge{
+	out := &protos.DirectedEdge{
 		Entity: uid,
 		Attr:   nq.Predicate,
 		Label:  nq.Label,
@@ -160,7 +163,7 @@ func (nq NQuad) ToEdgeUsing(newToUid map[string]uint64) (*taskp.DirectedEdge, er
 			return nil, err
 		}
 		out.ValueId = uid
-	case x.ValuePlain, x.ValueLang:
+	case x.ValuePlain, x.ValueMulti:
 		if err = copyValue(out, nq); err != nil {
 			return &emptyEdge, err
 		}
@@ -168,7 +171,7 @@ func (nq NQuad) ToEdgeUsing(newToUid map[string]uint64) (*taskp.DirectedEdge, er
 	return out, nil
 }
 
-func copyValue(out *taskp.DirectedEdge, nq NQuad) error {
+func copyValue(out *protos.DirectedEdge, nq NQuad) error {
 	var err error
 	if out.Value, err = byteVal(nq); err != nil {
 		return err
@@ -191,6 +194,7 @@ func sane(s string) bool {
 	if len(s) == 0 {
 		return true
 	}
+
 	// s should have atleast one alphanumeric character.
 	for _, r := range s {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
@@ -201,7 +205,7 @@ func sane(s string) bool {
 }
 
 // Parse parses a mutation string and returns the NQuad representation for it.
-func Parse(line string) (rnq graphp.NQuad, rerr error) {
+func Parse(line string) (rnq protos.NQuad, rerr error) {
 	l := lex.NewLexer(line).Run(lexText)
 	it := l.NewIterator()
 	var oval string
@@ -219,6 +223,13 @@ func Parse(line string) (rnq graphp.NQuad, rerr error) {
 		case itemObject:
 			rnq.ObjectId = strings.Trim(item.Val, " ")
 
+		case itemStar:
+			// This is a special case for predicate or object.
+			if rnq.Predicate == "" {
+				rnq.Predicate = x.DeleteAllPredicates
+			} else {
+				rnq.ObjectValue = &protos.Value{&protos.Value_DefaultVal{x.DeleteAllObjects}}
+			}
 		case itemLiteral:
 			oval = item.Val
 			if oval == "" {
@@ -231,7 +242,7 @@ func Parse(line string) (rnq graphp.NQuad, rerr error) {
 			// if lang tag is specified then type is set to string
 			// grammar allows either ^^ iriref or lang tag
 			if len(oval) > 0 {
-				rnq.ObjectValue = &graphp.Value{&graphp.Value_DefaultVal{oval}}
+				rnq.ObjectValue = &protos.Value{&protos.Value_DefaultVal{oval}}
 				// If no type is specified, we default to string.
 				rnq.ObjectType = int32(types.StringID)
 				oval = ""
@@ -242,31 +253,35 @@ func Parse(line string) (rnq graphp.NQuad, rerr error) {
 					"itemObject should be emitted before itemObjectType. Input: [%s]",
 					line)
 			}
+			if rnq.Predicate == x.DeleteAllPredicates {
+				return rnq, x.Errorf("If predicate is *, value should be * as well")
+			}
+
 			val := strings.Trim(item.Val, " ")
 			// TODO: Check if this condition is required.
 			if strings.Trim(val, " ") == "*" {
 				return rnq, x.Errorf("itemObject can't be *")
 			}
 			// Lets find out the storage type from the type map.
-			if t, ok := typeMap[val]; ok {
-				if oval == "_nil_" && t != types.StringID {
-					return rnq, x.Errorf("Invalid ObjectValue")
-				}
-				rnq.ObjectType = int32(t)
-				src := types.ValueForType(types.StringID)
-				src.Value = []byte(oval)
-				p, err := types.Convert(src, t)
-				if err != nil {
-					return rnq, err
-				}
-
-				if rnq.ObjectValue, err = types.ObjectValue(t, p.Value); err != nil {
-					return rnq, err
-				}
-				oval = ""
-			} else {
-				oval += "@@" + val
+			t, ok := typeMap[val]
+			if !ok {
+				return rnq, x.Errorf("Unrecognized rdf type %s", val)
 			}
+			if oval == "_nil_" && t != types.StringID {
+				return rnq, x.Errorf("Invalid ObjectValue")
+			}
+			rnq.ObjectType = int32(t)
+			src := types.ValueForType(types.StringID)
+			src.Value = []byte(oval)
+			p, err := types.Convert(src, t)
+			if err != nil {
+				return rnq, err
+			}
+
+			if rnq.ObjectValue, err = types.ObjectValue(t, p.Value); err != nil {
+				return rnq, err
+			}
+			oval = ""
 
 		case lex.ItemError:
 			return rnq, x.Errorf(item.Val)
@@ -296,7 +311,7 @@ func Parse(line string) (rnq graphp.NQuad, rerr error) {
 		return rnq, ErrEmpty
 	}
 	if len(oval) > 0 {
-		rnq.ObjectValue = &graphp.Value{&graphp.Value_DefaultVal{oval}}
+		rnq.ObjectValue = &protos.Value{&protos.Value_DefaultVal{oval}}
 		// If no type is specified, we default to string.
 		rnq.ObjectType = int32(types.DefaultID)
 	}
@@ -314,7 +329,7 @@ func Parse(line string) (rnq graphp.NQuad, rerr error) {
 	return rnq, nil
 }
 
-func parseFacets(it *lex.ItemIterator, rnq *graphp.NQuad) error {
+func parseFacets(it *lex.ItemIterator, rnq *protos.NQuad) error {
 	if !it.Next() {
 		return x.Errorf("Unexpected end of facets.")
 	}
@@ -400,7 +415,7 @@ var typeMap = map[string]types.TypeID{
 	"xs:string":                                   types.StringID,
 	"xs:dateTime":                                 types.DateTimeID,
 	"xs:date":                                     types.DateID,
-	"xs:int":                                      types.Int32ID,
+	"xs:int":                                      types.IntID,
 	"xs:boolean":                                  types.BoolID,
 	"xs:double":                                   types.FloatID,
 	"xs:float":                                    types.FloatID,
@@ -409,7 +424,8 @@ var typeMap = map[string]types.TypeID{
 	"http://www.w3.org/2001/XMLSchema#string":     types.StringID,
 	"http://www.w3.org/2001/XMLSchema#dateTime":   types.DateTimeID,
 	"http://www.w3.org/2001/XMLSchema#date":       types.DateID,
-	"http://www.w3.org/2001/XMLSchema#int":        types.Int32ID,
+	"http://www.w3.org/2001/XMLSchema#int":        types.IntID,
+	"http://www.w3.org/2001/XMLSchema#integer":    types.IntID,
 	"http://www.w3.org/2001/XMLSchema#boolean":    types.BoolID,
 	"http://www.w3.org/2001/XMLSchema#double":     types.FloatID,
 	"http://www.w3.org/2001/XMLSchema#float":      types.FloatID,

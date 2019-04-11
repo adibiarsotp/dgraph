@@ -1,17 +1,18 @@
 /*
- * Copyright 2016 Dgraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package x
@@ -23,7 +24,10 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -42,11 +46,15 @@ const (
 	ErrorUptodate        = "ErrorUptodate"
 	ErrorNoPermission    = "ErrorNoPermission"
 	ErrorInvalidMutation = "ErrorInvalidMutation"
+	ValidHostnameRegex   = "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$"
+	DeleteAllObjects     = "_DELETE_POSTING_"
+	DeleteAllPredicates  = "_ALL_PREDICATES_"
 )
 
 var (
 	debugMode = flag.Bool("debugmode", false,
 		"enable debug mode for more debug information")
+	regExpHostName = regexp.MustCompile(ValidHostnameRegex)
 )
 
 // WhiteSpace Replacer removes spaces and tabs from a string.
@@ -151,4 +159,56 @@ func Round(d time.Duration) time.Duration {
 		d = d + denominator - remainder
 	}
 	return d
+}
+
+// PageRange returns start and end indices given pagination params. Note that n
+// is the size of the input list.
+func PageRange(count, offset, n int) (int, int) {
+	if n == 0 {
+		return 0, 0
+	}
+	if count == 0 && offset == 0 {
+		return 0, n
+	}
+	if count < 0 {
+		// Items from the back of the array, like Python arrays. Do a positive mod n.
+		if count*-1 > n {
+			count = -n
+		}
+		return (((n + count) % n) + n) % n, n
+	}
+	start := offset
+	if start < 0 {
+		start = 0
+	}
+	if start > n {
+		return n, n
+	}
+	if count == 0 { // No count specified. Just take the offset parameter.
+		return start, n
+	}
+	end := start + count
+	if end > n {
+		end = n
+	}
+	return start, end
+}
+
+// ValidateAddress checks whether given address can be used with grpc dial function
+func ValidateAddress(addr string) bool {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if p, err := strconv.Atoi(port); err != nil || p <= 0 || p >= 65536 {
+		return false
+	}
+	if err := net.ParseIP(host); err == nil {
+		return true
+	}
+	// try to parse as hostname as per hostname RFC
+	if len(strings.Replace(host, ".", "", -1)) > 255 {
+		return false
+	}
+	return regExpHostName.MatchString(host)
 }

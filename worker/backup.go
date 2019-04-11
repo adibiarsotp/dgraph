@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package worker
 
 import (
@@ -13,26 +30,27 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dgraph-io/dgraph/group"
-	"github.com/dgraph-io/dgraph/protos/typesp"
-	"github.com/dgraph-io/dgraph/protos/workerp"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/types/facets"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/dgraph-io/badger/badger"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+
+	"github.com/adibiarsotp/dgraph/group"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/types/facets"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 const numBackupRoutines = 10
 
 type kv struct {
 	prefix string
-	list   *typesp.PostingList
+	list   *protos.PostingList
 }
 
 type skv struct {
 	attr   string
-	schema *typesp.Schema
+	schema *protos.SchemaUpdate
 }
 
 func toRDF(buf *bytes.Buffer, item kv) {
@@ -57,7 +75,7 @@ func toRDF(buf *bytes.Buffer, item kv) {
 				buf.WriteString("^^<pwd:")
 				buf.WriteString(vID.Name())
 				buf.WriteByte('>')
-			} else if p.PostingType == typesp.Posting_VALUE_LANG {
+			} else if p.PostingType == protos.Posting_VALUE_LANG {
 				buf.WriteByte('@')
 				buf.WriteString(string(p.Metadata))
 			} else if vID != types.BinaryID &&
@@ -89,7 +107,13 @@ func toRDF(buf *bytes.Buffer, item kv) {
 				buf.WriteByte('=')
 				fVal := &types.Val{Tid: types.StringID}
 				x.Check(types.Marshal(facets.ValFor(f), fVal))
-				buf.WriteString(fVal.Value.(string))
+				if facets.TypeIDFor(f) == types.StringID {
+					buf.WriteByte('"')
+					buf.WriteString(fVal.Value.(string))
+					buf.WriteByte('"')
+				} else {
+					buf.WriteString(fVal.Value.(string))
+				}
 			}
 			buf.WriteByte(')')
 		}
@@ -99,17 +123,23 @@ func toRDF(buf *bytes.Buffer, item kv) {
 }
 
 func toSchema(buf *bytes.Buffer, s *skv) {
-	buf.WriteString(s.attr)
+	if strings.ContainsRune(s.attr, ':') {
+		buf.WriteRune('<')
+		buf.WriteString(s.attr)
+		buf.WriteRune('>')
+	} else {
+		buf.WriteString(s.attr)
+	}
 	buf.WriteByte(':')
 	buf.WriteString(types.TypeID(s.schema.ValueType).Name())
-	if s.schema.Directive == typesp.Schema_REVERSE {
+	if s.schema.Directive == protos.SchemaUpdate_REVERSE {
 		buf.WriteString(" @reverse")
-	} else if s.schema.Directive == typesp.Schema_INDEX && len(s.schema.Tokenizer) > 0 {
+	} else if s.schema.Directive == protos.SchemaUpdate_INDEX && len(s.schema.Tokenizer) > 0 {
 		buf.WriteString(" @index(")
 		buf.WriteString(strings.Join(s.schema.Tokenizer, ","))
 		buf.WriteByte(')')
 	}
-	buf.WriteString("\n")
+	buf.WriteString(" . \n")
 }
 
 func writeToFile(fpath string, ch chan []byte) error {
@@ -167,7 +197,7 @@ func backup(gid uint32, bdir string) error {
 	var wg sync.WaitGroup
 	wg.Add(numBackupRoutines)
 	for i := 0; i < numBackupRoutines; i++ {
-		go func() {
+		go func(i int) {
 			buf := new(bytes.Buffer)
 			buf.Grow(50000)
 			for item := range chkv {
@@ -185,10 +215,10 @@ func backup(gid uint32, bdir string) error {
 				chb <- tmp
 			}
 			wg.Done()
-		}()
+		}(i)
 	}
 
-	// Use a goroutine to convert typesp.Schema to string
+	// Use a goroutine to convert protos.Schema to string
 	chs := make(chan *skv, 1000)
 	wg.Add(1)
 	go func() {
@@ -212,13 +242,15 @@ func backup(gid uint32, bdir string) error {
 	}()
 
 	// Iterate over rocksdb.
-	it := pstore.NewIterator()
+	it := pstore.NewIterator(badger.DefaultIteratorOptions)
 	defer it.Close()
 	var lastPred string
 	prefix := new(bytes.Buffer)
 	prefix.Grow(100)
-	for it.SeekToFirst(); it.Valid(); {
-		key := it.Key().Data()
+	var debugCount int
+	for it.Rewind(); it.Valid(); debugCount++ {
+		item := it.Item()
+		key := item.Key()
 		pk := x.Parse(key)
 
 		if pk.IsIndex() {
@@ -231,15 +263,15 @@ func backup(gid uint32, bdir string) error {
 			it.Seek(pk.SkipRangeOfSameType())
 			continue
 		}
-		if pk.Attr == "_uid_" {
+		if pk.Attr == "_uid_" || pk.Attr == "_predicate_" {
 			// Skip the UID mappings.
 			it.Seek(pk.SkipPredicate())
 			continue
 		}
 		if pk.IsSchema() {
 			if group.BelongsTo(pk.Attr) == gid {
-				s := &typesp.Schema{}
-				x.Check(s.Unmarshal(it.Value().Data()))
+				s := &protos.SchemaUpdate{}
+				x.Check(s.Unmarshal(item.Value()))
 				chs <- &skv{
 					attr:   pk.Attr,
 					schema: s,
@@ -249,7 +281,6 @@ func backup(gid uint32, bdir string) error {
 			it.Next()
 			continue
 		}
-
 		x.AssertTrue(pk.IsData())
 		pred, uid := pk.Attr, pk.Uid
 		if pred != lastPred && group.BelongsTo(pred) != gid {
@@ -262,8 +293,8 @@ func backup(gid uint32, bdir string) error {
 		prefix.WriteString("> <")
 		prefix.WriteString(pred)
 		prefix.WriteString("> ")
-		pl := &typesp.PostingList{}
-		x.Check(pl.Unmarshal(it.Value().Data()))
+		pl := &protos.PostingList{}
+		x.Check(pl.Unmarshal(item.Value()))
 		chkv <- kv{
 			prefix: prefix.String(),
 			list:   pl,
@@ -284,21 +315,21 @@ func backup(gid uint32, bdir string) error {
 	return err
 }
 
-func handleBackupForGroup(ctx context.Context, reqId uint64, gid uint32) *workerp.BackupPayload {
+func handleBackupForGroup(ctx context.Context, reqId uint64, gid uint32) *protos.BackupPayload {
 	n := groups().Node(gid)
 	if n.AmLeader() {
 		x.Trace(ctx, "Leader of group: %d. Running backup.", gid)
 		if err := backup(gid, *backupPath); err != nil {
 			x.TraceError(ctx, err)
-			return &workerp.BackupPayload{
+			return &protos.BackupPayload{
 				ReqId:  reqId,
-				Status: workerp.BackupPayload_FAILED,
+				Status: protos.BackupPayload_FAILED,
 			}
 		}
 		x.Trace(ctx, "Backup done for group: %d.", gid)
-		return &workerp.BackupPayload{
+		return &protos.BackupPayload{
 			ReqId:   reqId,
-			Status:  workerp.BackupPayload_SUCCESS,
+			Status:  protos.BackupPayload_SUCCESS,
 			GroupId: gid,
 		}
 	}
@@ -331,24 +362,24 @@ func handleBackupForGroup(ctx context.Context, reqId uint64, gid uint32) *worker
 	// But probably not worthy of crashing the server. We can just skip the backup.
 	if conn == nil {
 		x.Trace(ctx, fmt.Sprintf("Unable to find a server to backup group: %d", gid))
-		return &workerp.BackupPayload{
+		return &protos.BackupPayload{
 			ReqId:   reqId,
-			Status:  workerp.BackupPayload_FAILED,
+			Status:  protos.BackupPayload_FAILED,
 			GroupId: gid,
 		}
 	}
 
-	c := workerp.NewWorkerClient(conn)
-	nr := &workerp.BackupPayload{
+	c := protos.NewWorkerClient(conn)
+	nr := &protos.BackupPayload{
 		ReqId:   reqId,
 		GroupId: gid,
 	}
 	nrep, err := c.Backup(ctx, nr)
 	if err != nil {
 		x.TraceError(ctx, err)
-		return &workerp.BackupPayload{
+		return &protos.BackupPayload{
 			ReqId:   reqId,
-			Status:  workerp.BackupPayload_FAILED,
+			Status:  protos.BackupPayload_FAILED,
 			GroupId: gid,
 		}
 	}
@@ -358,19 +389,19 @@ func handleBackupForGroup(ctx context.Context, reqId uint64, gid uint32) *worker
 // Backup request is used to trigger backups for the request list of groups.
 // If a server receives request to backup a group that it doesn't handle, it would
 // automatically relay that request to the server that it thinks should handle the request.
-func (w *grpcWorker) Backup(ctx context.Context, req *workerp.BackupPayload) (*workerp.BackupPayload, error) {
-	reply := &workerp.BackupPayload{ReqId: req.ReqId}
-	reply.Status = workerp.BackupPayload_FAILED // Set by default.
+func (w *grpcWorker) Backup(ctx context.Context, req *protos.BackupPayload) (*protos.BackupPayload, error) {
+	reply := &protos.BackupPayload{ReqId: req.ReqId}
+	reply.Status = protos.BackupPayload_FAILED // Set by default.
 
 	if ctx.Err() != nil {
 		return reply, ctx.Err()
 	}
 	if !w.addIfNotPresent(req.ReqId) {
-		reply.Status = workerp.BackupPayload_DUPLICATE
+		reply.Status = protos.BackupPayload_DUPLICATE
 		return reply, nil
 	}
 
-	chb := make(chan *workerp.BackupPayload, 1)
+	chb := make(chan *protos.BackupPayload, 1)
 	go func() {
 		chb <- handleBackupForGroup(ctx, req.ReqId, req.GroupId)
 	}()
@@ -385,14 +416,21 @@ func (w *grpcWorker) Backup(ctx context.Context, req *workerp.BackupPayload) (*w
 
 func BackupOverNetwork(ctx context.Context) error {
 	// If we haven't even had a single membership update, don't run backup.
-	if len(*peerAddr) > 0 && groups().LastUpdate() == 0 {
+	if !HealthCheck() {
 		x.Trace(ctx, "This server hasn't yet been fully initiated. Please retry later.")
 		return x.Errorf("Uninitiated server. Please retry later")
 	}
 	// Let's first collect all groups.
 	gids := groups().KnownGroups()
 
-	ch := make(chan *workerp.BackupPayload, len(gids))
+	for i, gid := range gids {
+		if gid == 0 {
+			gids[i] = gids[len(gids)-1]
+			gids = gids[:len(gids)-1]
+		}
+	}
+
+	ch := make(chan *protos.BackupPayload, len(gids))
 	for _, gid := range gids {
 		go func(group uint32) {
 			reqId := uint64(rand.Int63())
@@ -402,7 +440,7 @@ func BackupOverNetwork(ctx context.Context) error {
 
 	for i := 0; i < len(gids); i++ {
 		bp := <-ch
-		if bp.Status != workerp.BackupPayload_SUCCESS {
+		if bp.Status != protos.BackupPayload_SUCCESS {
 			x.Trace(ctx, "Backup status: %v for group id: %d", bp.Status, bp.GroupId)
 			return fmt.Errorf("Backup status: %v for group id: %d", bp.Status, bp.GroupId)
 		}

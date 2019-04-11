@@ -1,18 +1,20 @@
 /*
-* Copyright 2016 DGraph Labs, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*         http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+
 package worker
 
 import (
@@ -21,35 +23,34 @@ import (
 	"net"
 	"testing"
 
+	"github.com/dgraph-io/badger/badger"
 	"google.golang.org/grpc"
 
-	"github.com/dgraph-io/dgraph/posting"
-	"github.com/dgraph-io/dgraph/protos/taskp"
-	"github.com/dgraph-io/dgraph/protos/workerp"
-	"github.com/dgraph-io/dgraph/store"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/posting"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
-func checkShard(ps *store.Store) (int, []byte) {
-	it := ps.NewIterator()
+func checkShard(ps *badger.KV) (int, []byte) {
+	it := ps.NewIterator(badger.DefaultIteratorOptions)
 	defer it.Close()
 
 	count := 0
-	for it.SeekToFirst(); it.Valid(); it.Next() {
+	for it.Rewind(); it.Valid(); it.Next() {
 		count++
 	}
-	return count, it.Key().Data()
+	return count, it.Item().Key()
 }
 
-func writePLs(t *testing.T, pred string, count int, vid uint64, ps *store.Store) {
+func writePLs(t *testing.T, pred string, count int, vid uint64, ps *badger.KV) {
 	for i := 0; i < count; i++ {
 		k := x.DataKey(pred, uint64(i))
 		list, _ := posting.GetOrCreate(k, 0)
 
-		de := &taskp.DirectedEdge{
+		de := &protos.DirectedEdge{
 			ValueId: vid,
 			Label:   "test",
-			Op:      taskp.DirectedEdge_SET,
+			Op:      protos.DirectedEdge_SET,
 		}
 		list.AddMutation(context.TODO(), de)
 		if merged, err := list.SyncIfDirty(context.TODO()); err != nil {
@@ -75,7 +76,7 @@ func newServer(port string) (*grpc.Server, net.Listener, error) {
 }
 
 func serve(s *grpc.Server, ln net.Listener) {
-	workerp.RegisterWorkerServer(s, &grpcWorker{})
+	protos.RegisterWorkerServer(s, &grpcWorker{})
 	s.Serve(ln)
 }
 

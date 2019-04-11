@@ -1,15 +1,31 @@
+/*
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package query
 
 import (
 	"container/heap"
 	"context"
 
-	"github.com/dgraph-io/dgraph/algo"
-	"github.com/dgraph-io/dgraph/protos/facetsp"
-	"github.com/dgraph-io/dgraph/protos/taskp"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/types/facets"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/algo"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/types/facets"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 type Item struct {
@@ -53,7 +69,7 @@ type nodeInfo struct {
 	cost   float64
 	parent uint64
 	attr   string
-	facet  *facetsp.Facets
+	facet  *protos.Facets
 	// Pointer to the item in heap. Used to update priority
 	node *Item
 }
@@ -61,11 +77,11 @@ type nodeInfo struct {
 type mapItem struct {
 	attr  string
 	cost  float64
-	facet *facetsp.Facets
+	facet *protos.Facets
 }
 
 func (sg *SubGraph) getCost(matrix, list int) (cost float64,
-	fcs *facetsp.Facets, rerr error) {
+	fcs *protos.Facets, rerr error) {
 
 	cost = 1.0
 	if sg.Params.Facet == nil {
@@ -86,8 +102,8 @@ func (sg *SubGraph) getCost(matrix, list int) (cost float64,
 		return cost, fcs, rerr
 	}
 	tv := facets.ValFor(fcs.Facets[0])
-	if tv.Tid == types.Int32ID {
-		cost = float64(tv.Value.(int32))
+	if tv.Tid == types.IntID {
+		cost = float64(tv.Value.(int64))
 	} else if tv.Tid == types.FloatID {
 		cost = float64(tv.Value.(float64))
 	} else {
@@ -103,8 +119,8 @@ func (start *SubGraph) expandOut(ctx context.Context,
 	var exec []*SubGraph
 	var err error
 	in := []uint64{start.Params.From}
-	start.SrcUIDs = &taskp.List{in}
-	start.uidMatrix = []*taskp.List{{in}}
+	start.SrcUIDs = &protos.List{in}
+	start.uidMatrix = []*protos.List{{in}}
 	start.DestUIDs = start.SrcUIDs
 
 	for _, child := range start.Children {
@@ -177,8 +193,8 @@ func (start *SubGraph) expandOut(ctx context.Context,
 			}
 			for _, child := range start.Children {
 				temp := new(SubGraph)
-				*temp = *child
-				temp.Children = []*SubGraph{}
+				temp.copyFiltersRecurse(child)
+
 				temp.SrcUIDs = sg.DestUIDs
 				// Remove those nodes which we have already traversed. As this cannot be
 				// in the path again.
@@ -200,6 +216,17 @@ func (start *SubGraph) expandOut(ctx context.Context,
 		}
 		rch <- nil
 		exec = out
+	}
+}
+
+func (temp *SubGraph) copyFiltersRecurse(sg *SubGraph) {
+	*temp = *sg
+	temp.Children = []*SubGraph{}
+	temp.Filters = []*SubGraph{}
+	for _, fc := range sg.Filters {
+		tempChild := new(SubGraph)
+		tempChild.copyFiltersRecurse(fc)
+		temp.Filters = append(temp.Filters, tempChild)
 	}
 }
 
@@ -346,7 +373,7 @@ func ShortestPath(ctx context.Context, sg *SubGraph) (*SubGraph, error) {
 	}
 	// Put the path in DestUIDs of the root.
 	if cur != sg.Params.From {
-		sg.DestUIDs = &taskp.List{}
+		sg.DestUIDs = &protos.List{}
 		return nil, nil
 	}
 
@@ -365,14 +392,13 @@ func ShortestPath(ctx context.Context, sg *SubGraph) (*SubGraph, error) {
 func createPathSubgraph(ctx context.Context, dist map[uint64]nodeInfo, result []uint64) *SubGraph {
 	shortestSg := new(SubGraph)
 	shortestSg.Params = params{
-		Alias:   "_path_",
-		GetUID:  true,
-		isDebug: isDebug(ctx),
+		Alias:  "_path_",
+		GetUid: true,
 	}
 	curUid := result[0]
-	shortestSg.SrcUIDs = &taskp.List{[]uint64{curUid}}
-	shortestSg.DestUIDs = &taskp.List{[]uint64{curUid}}
-	shortestSg.uidMatrix = []*taskp.List{{[]uint64{curUid}}}
+	shortestSg.SrcUIDs = &protos.List{[]uint64{curUid}}
+	shortestSg.DestUIDs = &protos.List{[]uint64{curUid}}
+	shortestSg.uidMatrix = []*protos.List{{[]uint64{curUid}}}
 
 	curNode := shortestSg
 	for i := 0; i < len(result)-1; i++ {
@@ -381,17 +407,17 @@ func createPathSubgraph(ctx context.Context, dist map[uint64]nodeInfo, result []
 		node := new(SubGraph)
 		nodeInfo := dist[childUid]
 		node.Params = params{
-			GetUID: true,
+			GetUid: true,
 		}
 		if nodeInfo.facet != nil {
 			// For consistent later processing.
-			node.Params.Facet = &facetsp.Param{}
+			node.Params.Facet = &protos.Param{}
 		}
 		node.Attr = nodeInfo.attr
-		node.facetsMatrix = []*facetsp.List{{[]*facetsp.Facets{nodeInfo.facet}}}
-		node.SrcUIDs = &taskp.List{[]uint64{curUid}}
-		node.DestUIDs = &taskp.List{[]uint64{childUid}}
-		node.uidMatrix = []*taskp.List{{[]uint64{childUid}}}
+		node.facetsMatrix = []*protos.FacetsList{{[]*protos.Facets{nodeInfo.facet}}}
+		node.SrcUIDs = &protos.List{[]uint64{curUid}}
+		node.DestUIDs = &protos.List{[]uint64{childUid}}
+		node.uidMatrix = []*protos.List{{[]uint64{childUid}}}
 
 		curNode.Children = append(curNode.Children, node)
 		curNode = node
@@ -399,11 +425,11 @@ func createPathSubgraph(ctx context.Context, dist map[uint64]nodeInfo, result []
 
 	node := new(SubGraph)
 	node.Params = params{
-		GetUID: true,
+		GetUid: true,
 	}
 	uid := result[len(result)-1]
-	node.SrcUIDs = &taskp.List{[]uint64{uid}}
-	node.uidMatrix = []*taskp.List{{[]uint64{uid}}}
+	node.SrcUIDs = &protos.List{[]uint64{uid}}
+	node.uidMatrix = []*protos.List{{[]uint64{uid}}}
 	curNode.Children = append(curNode.Children, node)
 
 	return shortestSg

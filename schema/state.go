@@ -1,23 +1,24 @@
 /*
- * Copyright 2016 DGraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package schema
 
 import (
-	"github.com/dgraph-io/dgraph/lex"
+	"github.com/adibiarsotp/dgraph/lex"
 )
 
 // Constants representing type of different graphql lexed items.
@@ -30,6 +31,9 @@ const (
 	itemRightRound                         // right round bracket
 	itemAt
 	itemComma
+	itemNewLine
+	itemDot
+	itemUnderscore
 )
 
 func lexText(l *lex.Lexer) lex.StateFn {
@@ -41,8 +45,12 @@ Loop:
 		case isNameBegin(r):
 			l.Backup()
 			return lexWord
-		case isSpace(r) || isEndOfLine(r):
+		case isSpace(r):
 			l.Ignore()
+		case isEndOfLine(r):
+			l.Emit(itemNewLine)
+		case r == '.':
+			l.Emit(itemDot)
 		case r == ',':
 			l.Emit(itemComma)
 		case r == '<':
@@ -61,6 +69,9 @@ Loop:
 			l.Emit(itemColon)
 		case r == '@':
 			l.Emit(itemAt)
+		case r == '_':
+			// Predicates can start with _.
+			return lexWord
 		default:
 			return l.Errorf("Invalid schema. Unexpected %s", l.Input[l.Start:l.Pos])
 		}
@@ -118,5 +129,5 @@ func isSpace(r rune) bool {
 
 // isEndOfLine returns true if the rune is a Linefeed or a Carriage return.
 func isEndOfLine(r rune) bool {
-	return r == '\u000A' || r == '\u000D'
+	return r == '\n' || r == '\u000D'
 }

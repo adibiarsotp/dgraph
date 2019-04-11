@@ -1,17 +1,18 @@
 /*
- * Copyright 2017 Dgraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package query
@@ -29,16 +30,16 @@ import (
 	geom "github.com/twpayne/go-geom"
 	"github.com/twpayne/go-geom/encoding/geojson"
 
-	"github.com/dgraph-io/dgraph/algo"
-	"github.com/dgraph-io/dgraph/protos/graphp"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/algo"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
-// ToProtocolBuf returns the list of graphp.Node which would be returned to the go
+// ToProtocolBuf returns the list of protos.Node which would be returned to the go
 // client.
-func ToProtocolBuf(l *Latency, sgl []*SubGraph) ([]*graphp.Node, error) {
-	var resNode []*graphp.Node
+func ToProtocolBuf(l *Latency, sgl []*SubGraph) ([]*protos.Node, error) {
+	var resNode []*protos.Node
 	for _, sg := range sgl {
 		if sg.Params.Alias == "var" || sg.Params.Alias == "shortest" {
 			continue
@@ -53,7 +54,8 @@ func ToProtocolBuf(l *Latency, sgl []*SubGraph) ([]*graphp.Node, error) {
 }
 
 // ToJson converts the list of subgraph into a JSON response by calling ToFastJSON.
-func ToJson(l *Latency, sgl []*SubGraph, w io.Writer, allocIds map[string]string) error {
+func ToJson(l *Latency, sgl []*SubGraph, w io.Writer, allocIds map[string]string,
+	addLatency bool) error {
 	sgr := &SubGraph{
 		Attr: "__",
 	}
@@ -61,12 +63,12 @@ func ToJson(l *Latency, sgl []*SubGraph, w io.Writer, allocIds map[string]string
 		if sg.Params.Alias == "var" || sg.Params.Alias == "shortest" {
 			continue
 		}
-		if sg.Params.isDebug {
-			sgr.Params.isDebug = true
+		if sg.Params.GetUid {
+			sgr.Params.GetUid = true
 		}
 		sgr.Children = append(sgr.Children, sg)
 	}
-	return sgr.ToFastJSON(l, w, allocIds)
+	return sgr.ToFastJSON(l, w, allocIds, addLatency)
 }
 
 // outputNode is the generic output / writer for preTraverse.
@@ -75,14 +77,16 @@ type outputNode interface {
 	AddMapChild(attr string, node outputNode, isRoot bool)
 	AddListChild(attr string, child outputNode)
 	New(attr string) outputNode
-	SetUID(uid uint64)
-	SetXID(xid string)
+	SetUID(uid uint64, attr string)
 	IsEmpty() bool
+
+	addCountAtRoot(*SubGraph)
+	addGroupby(*SubGraph, string)
 }
 
 // protoNode is the proto output for preTraverse.
 type protoNode struct {
-	*graphp.Node
+	*protos.Node
 }
 
 // AddValue adds an attribute value for protoOutputNode.
@@ -93,7 +97,7 @@ func (p *protoNode) AddValue(attr string, v types.Val) {
 // AddMapChild adds a node value for protoOutputNode.
 func (p *protoNode) AddMapChild(attr string, v outputNode, isRoot bool) {
 	// Assert that attr == v.Node.Attribute
-	var childNode *graphp.Node
+	var childNode *protos.Node
 	var as []string
 	for _, c := range p.Node.Children {
 		as = append(as, c.Attribute)
@@ -107,8 +111,6 @@ func (p *protoNode) AddMapChild(attr string, v outputNode, isRoot bool) {
 	} else if childNode != nil {
 		// merge outputNode into childNode
 		vnode := v.(*protoNode).Node
-		x.AssertTruef(vnode.Uid == childNode.Uid && vnode.Xid == childNode.Xid,
-			"Invalid nodes while merging.")
 		for _, p := range vnode.Properties {
 			childNode.Properties = append(childNode.Properties, p)
 		}
@@ -132,21 +134,20 @@ func (p *protoNode) AddListChild(attr string, child outputNode) {
 
 // New creates a new node for protoOutputNode.
 func (p *protoNode) New(attr string) outputNode {
-	uc := nodePool.Get().(*graphp.Node)
+	uc := nodePool.Get().(*protos.Node)
 	uc.Attribute = attr
 	return &protoNode{uc}
 }
 
 // SetUID sets UID of a protoOutputNode.
-func (p *protoNode) SetUID(uid uint64) { p.Node.Uid = uid }
-
-// SetXID sets XID of a protoOutputNode.
-func (p *protoNode) SetXID(xid string) { p.Node.Xid = xid }
+func (p *protoNode) SetUID(uid uint64, attr string) {
+	p.AddValue(attr, types.Val{
+		Tid:   types.UidID,
+		Value: uid,
+	})
+}
 
 func (p *protoNode) IsEmpty() bool {
-	if p.Node.Uid > 0 {
-		return false
-	}
 	if len(p.Node.Children) > 0 {
 		return false
 	}
@@ -156,63 +157,130 @@ func (p *protoNode) IsEmpty() bool {
 	return true
 }
 
-func (n *protoNode) normalize(props []*graphp.Property, out []protoNode) []protoNode {
-	if len(n.Children) == 0 {
-		props = append(props, n.Properties...)
-		pn := protoNode{&graphp.Node{Properties: props}}
-		out = append(out, pn)
-		return out
+func mergeProto(parent [][]*protos.Property, child [][]*protos.Property) [][]*protos.Property {
+	if len(parent) == 0 {
+		return child
 	}
 
-	for _, child := range n.Children {
-		p := make([]*graphp.Property, len(props))
-		copy(p, props)
-		p = append(p, n.Properties...)
-		out = (&protoNode{child}).normalize(p, out)
+	mergedLists := make([][]*protos.Property, 0, len(parent)*len(child))
+	for _, pa := range parent {
+		for _, ca := range child {
+			mergeList := make([]*protos.Property, 0, len(parent))
+			mergeList = append(mergeList, pa...)
+			mergeList = append(mergeList, ca...)
+			mergedLists = append(mergedLists, mergeList)
+		}
 	}
-	return out
+	return mergedLists
+}
+
+func (n *protoNode) normalize() [][]*protos.Property {
+	if len(n.Children) == 0 {
+		return [][]*protos.Property{n.Properties}
+	}
+
+	parentSlice := make([][]*protos.Property, 0, len(n.Properties))
+	if len(n.Properties) > 0 {
+		parentSlice = append(parentSlice, n.Properties)
+	}
+
+	// Temporary map, so that we can group children by attribute, similar to how
+	// we have in JSON. Then we can call normalize on all children with same attribute,
+	// aggregate results and merge them with the results of children with some other attribute.
+	attrChildrenMap := make(map[string][]*protos.Node)
+	for _, child := range n.Children {
+		attrChildrenMap[child.Attribute] = append(attrChildrenMap[child.Attribute], child)
+	}
+
+	// A temporary slice in which we store the attrs and then sort them. We need this so that
+	// the order of results is deterministic which wont be the case if we directly iterated over
+	// the map.
+	attrSlice := make([]string, 0, len(n.Children))
+	for attr, _ := range attrChildrenMap {
+		attrSlice = append(attrSlice, attr)
+	}
+	sort.Strings(attrSlice)
+
+	for _, attr := range attrSlice {
+		attrChildren := attrChildrenMap[attr]
+		childSlice := make([][]*protos.Property, 0, 5)
+
+		for _, child := range attrChildren {
+			childSlice = append(childSlice, (&protoNode{child}).normalize()...)
+		}
+		parentSlice = mergeProto(parentSlice, childSlice)
+
+	}
+	return parentSlice
+}
+
+func (n *protoNode) addCountAtRoot(sg *SubGraph) {
+	c := types.ValueForType(types.IntID)
+	// This is count() without any attribute.
+	c.Value = int64(len(sg.DestUIDs.Uids))
+	n1 := n.New(sg.Params.Alias)
+	n1.AddValue(sg.Params.uidCount, c)
+	n.AddListChild(sg.Params.Alias, n1)
+}
+
+func (n *protoNode) addGroupby(sg *SubGraph, fname string) {
+	g := n.New(fname)
+	for _, grp := range sg.GroupbyRes.group {
+		uc := g.New("@groupby")
+		for _, it := range grp.keys {
+			uc.AddValue(it.attr, it.key)
+		}
+		for _, it := range grp.aggregates {
+			uc.AddValue(it.attr, it.key)
+		}
+		g.AddListChild("@groupby", uc)
+	}
+	n.AddListChild(fname, g)
 }
 
 // ToProtocolBuffer does preorder traversal to build a proto buffer. We have
 // used postorder traversal before, but preorder seems simpler and faster for
 // most cases.
-func (sg *SubGraph) ToProtocolBuffer(l *Latency) (*graphp.Node, error) {
+func (sg *SubGraph) ToProtocolBuffer(l *Latency) (*protos.Node, error) {
 	var seedNode *protoNode
 	if sg.uidMatrix == nil {
 		return seedNode.New(sg.Params.Alias).(*protoNode).Node, nil
 	}
 
 	n := seedNode.New("_root_")
-	for _, uid := range sg.uidMatrix[0].Uids {
-		// For the root, the name is stored in Alias, not Attr.
-		if algo.IndexOf(sg.DestUIDs, uid) < 0 {
-			// This UID was filtered. So Ignore it.
-			continue
-		}
-		n1 := seedNode.New(sg.Params.Alias)
-		if sg.Params.GetUID || sg.Params.isDebug {
-			n1.SetUID(uid)
-		}
+	if sg.Params.uidCount != "" {
+		n.addCountAtRoot(sg)
+	}
 
-		if rerr := sg.preTraverse(uid, n1, n1); rerr != nil {
-			if rerr.Error() == "_INV_" {
+	if sg.Params.isGroupBy {
+		n.addGroupby(sg, sg.Params.Alias)
+	} else {
+		for _, uid := range sg.uidMatrix[0].Uids {
+			// For the root, the name is stored in Alias, not Attr.
+			if algo.IndexOf(sg.DestUIDs, uid) < 0 {
+				// This UID was filtered. So Ignore it.
 				continue
 			}
-			return n.(*protoNode).Node, rerr
-		}
-		if n1.IsEmpty() {
-			continue
-		}
-		if !sg.Params.Normalize {
-			n.AddListChild(sg.Params.Alias, n1)
-			continue
-		}
+			n1 := seedNode.New(sg.Params.Alias)
 
-		// Lets normalize the response now.
-		normalized := make([]protoNode, 0, 10)
-		props := make([]*graphp.Property, 0, 10)
-		for _, c := range (n1.(*protoNode)).normalize(props, normalized) {
-			n.AddListChild(sg.Params.Alias, &c)
+			if rerr := sg.preTraverse(uid, n1, n1); rerr != nil {
+				if rerr.Error() == "_INV_" {
+					continue
+				}
+				return n.(*protoNode).Node, rerr
+			}
+			if n1.IsEmpty() {
+				continue
+			}
+			if !sg.Params.Normalize {
+				n.AddListChild(sg.Params.Alias, n1)
+				continue
+			}
+
+			// Lets normalize the response now.
+			for _, c := range n1.(*protoNode).normalize() {
+				n.AddListChild(sg.Params.Alias, &protoNode{&protos.Node{Properties: c}})
+			}
 		}
 	}
 	l.ProtocolBuffer = time.Since(l.Start) - l.Parsing - l.Processing
@@ -240,7 +308,7 @@ type fastJsonNode struct {
 func (fj *fastJsonNode) AddValue(attr string, v types.Val) {
 	if bs, err := valToBytes(v); err == nil {
 		_, found := fj.attrs[attr]
-		x.AssertTruef(!found, "Setting value twice for same attribute")
+		x.AssertTruef(!found, "Setting value twice for same attribute %v", attr)
 		fj.attrs[attr] = makeScalarAttr(bs)
 	}
 }
@@ -278,20 +346,16 @@ func (fj *fastJsonNode) New(attr string) outputNode {
 	}
 }
 
-func (fj *fastJsonNode) SetUID(uid uint64) {
-	uidBs, found := fj.attrs["_uid_"]
+func (fj *fastJsonNode) SetUID(uid uint64, attr string) {
+	uidBs, found := fj.attrs[attr]
 	if found {
 		x.AssertTruef(uidBs.isScalar, "Found node value for _uid_. Expected scalar value.")
 		lUidBs := len(uidBs.scalarVal)
 		currUid, err := strconv.ParseUint(string(uidBs.scalarVal[1:lUidBs-1]), 0, 64)
 		x.AssertTruef(err == nil && currUid == uid, "Setting two different uids on same node.")
 	} else {
-		fj.attrs["_uid_"] = makeScalarAttr([]byte(fmt.Sprintf("\"%#x\"", uid)))
+		fj.attrs[attr] = makeScalarAttr([]byte(fmt.Sprintf("\"%#x\"", uid)))
 	}
-}
-
-func (fj *fastJsonNode) SetXID(xid string) {
-	fj.attrs["_xid_"] = makeScalarAttr([]byte(strconv.Quote(xid)))
 }
 
 func (fj *fastJsonNode) IsEmpty() bool {
@@ -302,7 +366,7 @@ func valToBytes(v types.Val) ([]byte, error) {
 	switch v.Tid {
 	case types.BinaryID:
 		return v.Value.([]byte), nil
-	case types.Int32ID:
+	case types.IntID:
 		return []byte(fmt.Sprintf("%d", v.Value)), nil
 	case types.FloatID:
 		return []byte(fmt.Sprintf("%f", v.Value)), nil
@@ -312,7 +376,7 @@ func valToBytes(v types.Val) ([]byte, error) {
 		}
 		return []byte("false"), nil
 	case types.StringID, types.DefaultID:
-		return []byte(fmt.Sprintf("%q", v.Value.(string))), nil
+		return []byte(fmt.Sprintf(`"%s"`, v.Value.(string))), nil
 	case types.DateID:
 		s := v.Value.(time.Time).Format("2006-01-02")
 		return json.Marshal(s)
@@ -374,42 +438,82 @@ func (fj *fastJsonNode) encode(bufw *bufio.Writer) {
 	bufw.WriteRune('}')
 }
 
-func (n *fastJsonNode) normalize(av []attrVal, out []fastJsonNode) []fastJsonNode {
-	if len(n.children) == 0 {
-		// No more children nodes, lets copy the attrs to the slice and attach the
-		// result to out.
-		for k, v := range n.attrs {
-			av = append(av, attrVal{k, v})
-		}
-
-		fn := fastJsonNode{
-			attrs: make(map[string]*fastJsonAttr),
-		}
-		for _, pair := range av {
-			fn.attrs[pair.attr] = pair.val
-		}
-		out = append(out, fn)
-		return out
+func merge(parent []map[string]*fastJsonAttr,
+	child []map[string]*fastJsonAttr) []map[string]*fastJsonAttr {
+	if len(parent) == 0 {
+		return child
 	}
 
-	for _, child := range n.children {
-		// n.children is a map of string -> []*fastJsonNode.
-		for _, jn := range child {
-			vals := make([]attrVal, len(av))
-			copy(vals, av)
-			// Create a copy of the attr-val slice, attach attrs and pass to children.
-			for k, v := range n.attrs {
-				vals = append(vals, attrVal{k, v})
+	// Here we merge two slices of maps.
+	mergedList := make([]map[string]*fastJsonAttr, 0, len(parent)*len(child))
+	for _, pa := range parent {
+		for _, ca := range child {
+			mergeMap := make(map[string]*fastJsonAttr)
+			for k, v := range pa {
+				mergeMap[k] = v
 			}
-			out = jn.normalize(vals, out)
+			// Copy over child map entries to mergeMap created above.
+			for k, v := range ca {
+				mergeMap[k] = v
+			}
+			// Add the map to the list.
+			mergedList = append(mergedList, mergeMap)
 		}
 	}
-	return out
+	return mergedList
+}
+
+func (n *fastJsonNode) normalize() []map[string]*fastJsonAttr {
+	if len(n.children) == 0 {
+		// Recursion base case
+		// There are no children, we can just return slice with n.attrs map.
+		return []map[string]*fastJsonAttr{n.attrs}
+	}
+
+	parentSlice := make([]map[string]*fastJsonAttr, 0, 5)
+	// If the parents has attrs, lets add them to the slice so that it can be
+	// merged with children later.
+	parentSlice = append(parentSlice, n.attrs)
+
+	for _, childNodes := range n.children {
+		childSlice := make([]map[string]*fastJsonAttr, 0, 5)
+		// Normalizing children.
+		for _, childNode := range childNodes {
+			childSlice = append(childSlice, childNode.normalize()...)
+		}
+		// Merging with parent.
+		parentSlice = merge(parentSlice, childSlice)
+	}
+	return parentSlice
 }
 
 type attrVal struct {
 	attr string
 	val  *fastJsonAttr
+}
+
+func (n *fastJsonNode) addGroupby(sg *SubGraph, fname string) {
+	g := n.New(fname)
+	for _, grp := range sg.GroupbyRes.group {
+		uc := g.New("@groupby")
+		for _, it := range grp.keys {
+			uc.AddValue(it.attr, it.key)
+		}
+		for _, it := range grp.aggregates {
+			uc.AddValue(it.attr, it.key)
+		}
+		g.AddListChild("@groupby", uc)
+	}
+	n.AddListChild(fname, g)
+}
+
+func (n *fastJsonNode) addCountAtRoot(sg *SubGraph) {
+	c := types.ValueForType(types.IntID)
+	// This is count() without any attribute.
+	c.Value = int64(len(sg.DestUIDs.Uids))
+	n1 := n.New(sg.Params.Alias)
+	n1.AddValue(sg.Params.uidCount, c)
+	n.AddListChild(sg.Params.Alias, n1)
 }
 
 func processNodeUids(n *fastJsonNode, sg *SubGraph) error {
@@ -418,6 +522,16 @@ func processNodeUids(n *fastJsonNode, sg *SubGraph) error {
 		return nil
 	}
 	lenList := len(sg.uidMatrix[0].Uids)
+
+	if sg.Params.uidCount != "" {
+		n.addCountAtRoot(sg)
+	}
+
+	if sg.Params.isGroupBy {
+		n.addGroupby(sg, sg.Params.Alias)
+		return nil
+	}
+
 	for i := 0; i < lenList; i++ {
 		uid := sg.uidMatrix[0].Uids[i]
 		if algo.IndexOf(sg.DestUIDs, uid) < 0 {
@@ -426,15 +540,13 @@ func processNodeUids(n *fastJsonNode, sg *SubGraph) error {
 		}
 
 		n1 := seedNode.New(sg.Params.Alias)
-		if sg.Params.GetUID || sg.Params.isDebug {
-			n1.SetUID(uid)
-		}
 		if err := sg.preTraverse(uid, n1, n1); err != nil {
 			if err.Error() == "_INV_" {
 				continue
 			}
 			return err
 		}
+
 		if n1.IsEmpty() {
 			continue
 		}
@@ -445,19 +557,14 @@ func processNodeUids(n *fastJsonNode, sg *SubGraph) error {
 		}
 
 		// Lets normalize the response now.
-		normalized := make([]fastJsonNode, 0, 10)
-
-		// This slice is used to mantain the leaf nodes along a path while traversing
-		// the Subgraph.
-		av := make([]attrVal, 0, 10)
-		for _, c := range (n1.(*fastJsonNode)).normalize(av, normalized) {
-			n.AddListChild(sg.Params.Alias, &fastJsonNode{attrs: c.attrs})
+		for _, c := range n1.(*fastJsonNode).normalize() {
+			n.AddListChild(sg.Params.Alias, &fastJsonNode{attrs: c})
 		}
 	}
 	return nil
 }
 
-func (sg *SubGraph) ToFastJSON(l *Latency, w io.Writer, allocIds map[string]string) error {
+func (sg *SubGraph) ToFastJSON(l *Latency, w io.Writer, allocIds map[string]string, addLatency bool) error {
 	var seedNode *fastJsonNode
 	n := seedNode.New("_root_")
 	if sg.Attr == "__" {
@@ -474,7 +581,7 @@ func (sg *SubGraph) ToFastJSON(l *Latency, w io.Writer, allocIds map[string]stri
 		}
 	}
 
-	if sg.Params.isDebug {
+	if addLatency {
 		sl := seedNode.New("serverLatency").(*fastJsonNode)
 		for k, v := range l.ToMap() {
 			val := types.ValueForType(types.StringID)

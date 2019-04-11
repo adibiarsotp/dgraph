@@ -1,17 +1,18 @@
 /*
- * Copyright 2016 Dgraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package types
@@ -24,8 +25,8 @@ import (
 	"github.com/golang/geo/s2"
 	"github.com/twpayne/go-geom"
 
-	"github.com/dgraph-io/dgraph/protos/taskp"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 // QueryType indicates the type of geo query.
@@ -73,48 +74,48 @@ func GetGeoTokens(funcArgs []string) ([]string, *GeoQueryData, error) {
 	funcName := strings.ToLower(funcArgs[0])
 	switch funcName {
 	case "near":
-		if len(funcArgs) != 3 {
-			return nil, nil, x.Errorf("near function requires 3 arguments, but got %d",
+		if len(funcArgs) != 4 {
+			return nil, nil, x.Errorf("near function requires 2 arguments, but got %d",
 				len(funcArgs))
 		}
-		maxDist, err := strconv.ParseFloat(funcArgs[2], 64)
+		maxDist, err := strconv.ParseFloat(funcArgs[3], 64)
 		if err != nil {
 			return nil, nil, x.Wrapf(err, "Error while converting distance to float")
 		}
 		if maxDist < 0 {
 			return nil, nil, x.Errorf("Distance cannot be negative")
 		}
-		g, err := convertToGeom(funcArgs[1])
+		g, err := convertToGeom(funcArgs[2])
 		if err != nil {
 			return nil, nil, err
 		}
 		return queryTokensGeo(QueryTypeNear, g, maxDist)
 	case "within":
-		if len(funcArgs) != 2 {
-			return nil, nil, x.Errorf("within function requires 2 arguments, but got %d",
+		if len(funcArgs) != 3 {
+			return nil, nil, x.Errorf("within function requires 1 arguments, but got %d",
 				len(funcArgs))
 		}
-		g, err := convertToGeom(funcArgs[1])
+		g, err := convertToGeom(funcArgs[2])
 		if err != nil {
 			return nil, nil, err
 		}
 		return queryTokensGeo(QueryTypeWithin, g, 0.0)
 	case "contains":
-		if len(funcArgs) != 2 {
-			return nil, nil, x.Errorf("contains function requires 2 arguments, but got %d",
+		if len(funcArgs) != 3 {
+			return nil, nil, x.Errorf("contains function requires 1 arguments, but got %d",
 				len(funcArgs))
 		}
-		g, err := convertToGeom(funcArgs[1])
+		g, err := convertToGeom(funcArgs[2])
 		if err != nil {
 			return nil, nil, err
 		}
 		return queryTokensGeo(QueryTypeContains, g, 0.0)
 	case "intersects":
-		if len(funcArgs) != 2 {
-			return nil, nil, x.Errorf("intersects function requires 2 arguments, but got %d",
+		if len(funcArgs) != 3 {
+			return nil, nil, x.Errorf("intersects function requires 1 arguments, but got %d",
 				len(funcArgs))
 		}
-		g, err := convertToGeom(funcArgs[1])
+		g, err := convertToGeom(funcArgs[2])
 		if err != nil {
 			return nil, nil, err
 		}
@@ -322,9 +323,9 @@ func (q GeoQueryData) intersects(g geom.T) bool {
 }
 
 // FilterGeoUids filters the uids based on the corresponding values and GeoQueryData.
-func FilterGeoUids(uids *taskp.List, values []*taskp.Value, q *GeoQueryData) *taskp.List {
+func FilterGeoUids(uids *protos.List, values []*protos.TaskValue, q *GeoQueryData) *protos.List {
 	x.AssertTruef(len(values) == len(uids.Uids), "lengths not matching")
-	rv := &taskp.List{}
+	rv := &protos.List{}
 	for i := 0; i < len(values); i++ {
 		valBytes := values[i].Val
 		if bytes.Equal(valBytes, nil) {

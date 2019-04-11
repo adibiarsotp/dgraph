@@ -1,17 +1,18 @@
 /*
- * Copyright 2016 DGraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package types
@@ -19,7 +20,7 @@ package types
 import (
 	"time"
 
-	"github.com/dgraph-io/dgraph/protos/typesp"
+	"github.com/adibiarsotp/dgraph/protos"
 	geom "github.com/twpayne/go-geom"
 )
 
@@ -32,21 +33,21 @@ const (
 // data. When adding a new type *always* add to the end of this list.
 // Never delete anything from this list even if it becomes unused.
 const (
-	BinaryID   = TypeID(typesp.Posting_BINARY)
-	Int32ID    = TypeID(typesp.Posting_INT32)
-	FloatID    = TypeID(typesp.Posting_FLOAT)
-	BoolID     = TypeID(typesp.Posting_BOOL)
-	DateTimeID = TypeID(typesp.Posting_DATETIME)
-	StringID   = TypeID(typesp.Posting_STRING)
-	DateID     = TypeID(typesp.Posting_DATE)
-	GeoID      = TypeID(typesp.Posting_GEO)
-	UidID      = TypeID(typesp.Posting_UID)
-	PasswordID = TypeID(typesp.Posting_PASSWORD)
-	DefaultID  = TypeID(typesp.Posting_DEFAULT)
+	BinaryID   = TypeID(protos.Posting_BINARY)
+	IntID      = TypeID(protos.Posting_INT)
+	FloatID    = TypeID(protos.Posting_FLOAT)
+	BoolID     = TypeID(protos.Posting_BOOL)
+	DateTimeID = TypeID(protos.Posting_DATETIME)
+	StringID   = TypeID(protos.Posting_STRING)
+	DateID     = TypeID(protos.Posting_DATE)
+	GeoID      = TypeID(protos.Posting_GEO)
+	UidID      = TypeID(protos.Posting_UID)
+	PasswordID = TypeID(protos.Posting_PASSWORD)
+	DefaultID  = TypeID(protos.Posting_DEFAULT)
 )
 
 var typeNameMap = map[string]TypeID{
-	"int":      Int32ID,
+	"int":      IntID,
 	"float":    FloatID,
 	"string":   StringID,
 	"bool":     BoolID,
@@ -59,11 +60,11 @@ var typeNameMap = map[string]TypeID{
 	"default":  DefaultID,
 }
 
-type TypeID typesp.Posting_ValType
+type TypeID protos.Posting_ValType
 
 func (t TypeID) Name() string {
 	switch t {
-	case Int32ID:
+	case IntID:
 		return "int"
 	case FloatID:
 		return "float"
@@ -111,9 +112,9 @@ func ValueForType(id TypeID) Val {
 		var b []byte
 		return Val{BinaryID, &b}
 
-	case Int32ID:
-		var i int32
-		return Val{Int32ID, &i}
+	case IntID:
+		var i int64
+		return Val{IntID, &i}
 
 	case FloatID:
 		var f float64
@@ -160,6 +161,24 @@ func createDate(y int, m time.Month, d int) time.Time {
 	var dt time.Time
 	dt = time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 	return dt
+}
+
+func ParseTime(val string) (time.Time, error) {
+	var t time.Time
+	if err := t.UnmarshalText([]byte(val)); err == nil {
+		return t, err
+	}
+	// try without timezone
+	if t, err := time.Parse(dateTimeFormat, val); err == nil {
+		return t, err
+	}
+	if t, err := time.Parse(dateFormatYMD, val); err == nil {
+		return t, err
+	}
+	if t, err := time.Parse(dateFormatYM, val); err == nil {
+		return t, err
+	}
+	return time.Parse(dateFormatY, val)
 }
 
 const dateFormatYMD = "2006-01-02"

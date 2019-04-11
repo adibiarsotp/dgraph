@@ -1,17 +1,18 @@
 /*
- * Copyright 2015 DGraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package main
@@ -19,6 +20,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
 	"crypto/tls"
 	"encoding/gob"
 	"encoding/json"
@@ -34,6 +36,7 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"regexp"
 	"runtime"
 	"runtime/pprof"
 	"strconv"
@@ -41,23 +44,22 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dgraph-io/badger/badger"
 	"golang.org/x/net/context"
 	"golang.org/x/net/trace"
 	"google.golang.org/grpc"
 
-	"github.com/dgraph-io/dgraph/gql"
-	"github.com/dgraph-io/dgraph/group"
-	"github.com/dgraph-io/dgraph/posting"
-	"github.com/dgraph-io/dgraph/protos/graphp"
-	"github.com/dgraph-io/dgraph/protos/taskp"
-	"github.com/dgraph-io/dgraph/query"
-	"github.com/dgraph-io/dgraph/rdf"
-	"github.com/dgraph-io/dgraph/schema"
-	"github.com/dgraph-io/dgraph/store"
-	"github.com/dgraph-io/dgraph/tok"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/worker"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/gql"
+	"github.com/adibiarsotp/dgraph/group"
+	"github.com/adibiarsotp/dgraph/posting"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/query"
+	"github.com/adibiarsotp/dgraph/rdf"
+	"github.com/adibiarsotp/dgraph/schema"
+	"github.com/adibiarsotp/dgraph/tok"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/worker"
+	"github.com/adibiarsotp/dgraph/x"
 	"github.com/soheilhy/cmux"
 )
 
@@ -73,7 +75,6 @@ var (
 	cpuprofile     = flag.String("cpu", "", "write cpu profile to file")
 	memprofile     = flag.String("mem", "", "write memory profile to file")
 	dumpSubgraph   = flag.String("dumpsg", "", "Directory to save subgraph for testing, debugging")
-	uiDir          = flag.String("ui", os.Getenv("GOPATH")+"/src/github.com/dgraph-io/dgraph/dashboard/build", "Directory which contains assets for the user interface")
 	finishCh       = make(chan struct{}) // channel to wait for all pending reqs to finish.
 	shutdownCh     = make(chan struct{}) // channel to signal shutdown.
 	pendingQueries = make(chan struct{}, 10000*runtime.NumCPU())
@@ -89,8 +90,10 @@ var (
 	tlsMaxVersion    = flag.String("tls.max_version", "TLS12", "TLS max version.")
 )
 
+var mutationNotAllowedErr = x.Errorf("Mutations are forbidden on this server.")
+
 type mutationResult struct {
-	edges   []*taskp.DirectedEdge
+	edges   []*protos.DirectedEdge
 	newUids map[string]uint64
 }
 
@@ -121,8 +124,8 @@ func addCorsHeaders(w http.ResponseWriter) {
 	w.Header().Set("Connection", "close")
 }
 
-func convertToNQuad(ctx context.Context, mutation string) ([]*graphp.NQuad, error) {
-	var nquads []*graphp.NQuad
+func convertToNQuad(ctx context.Context, mutation string) ([]*protos.NQuad, error) {
+	var nquads []*protos.NQuad
 	r := strings.NewReader(mutation)
 	reader := bufio.NewReader(r)
 	x.Trace(ctx, "Converting to NQuad")
@@ -153,8 +156,8 @@ func convertToNQuad(ctx context.Context, mutation string) ([]*graphp.NQuad, erro
 	return nquads, nil
 }
 
-func convertToEdges(ctx context.Context, nquads []*graphp.NQuad) (mutationResult, error) {
-	var edges []*taskp.DirectedEdge
+func convertToEdges(ctx context.Context, nquads []*protos.NQuad) (mutationResult, error) {
+	var edges []*protos.DirectedEdge
 	var mr mutationResult
 
 	newUids := make(map[string]uint64)
@@ -162,25 +165,25 @@ func convertToEdges(ctx context.Context, nquads []*graphp.NQuad) (mutationResult
 		if strings.HasPrefix(nq.Subject, "_:") {
 			newUids[nq.Subject] = 0
 		} else {
-			// Only store xids that need to be marked as used.
-			if _, err := strconv.ParseInt(nq.Subject, 0, 64); err != nil {
-				uid, err := rdf.GetUid(nq.Subject)
-				if err != nil {
-					return mr, err
-				}
-				newUids[nq.Subject] = uid
+			// Only store xids that need to be generated.
+			_, err := rdf.ParseUid(nq.Subject)
+			if err == rdf.ErrInvalidUID {
+				return mr, err
+			} else if err != nil {
+				newUids[nq.Subject] = 0
 			}
 		}
 
 		if len(nq.ObjectId) > 0 {
 			if strings.HasPrefix(nq.ObjectId, "_:") {
 				newUids[nq.ObjectId] = 0
-			} else if !strings.HasPrefix(nq.ObjectId, "_uid_:") {
-				uid, err := rdf.GetUid(nq.ObjectId)
-				if err != nil {
+			} else {
+				_, err := rdf.ParseUid(nq.ObjectId)
+				if err == rdf.ErrInvalidUID {
 					return mr, err
+				} else if err != nil {
+					newUids[nq.ObjectId] = 0
 				}
-				newUids[nq.ObjectId] = uid
 			}
 		}
 	}
@@ -192,7 +195,7 @@ func convertToEdges(ctx context.Context, nquads []*graphp.NQuad) (mutationResult
 		}
 	}
 
-	// Wrapper for a pointer to graphp.Nquad
+	// Wrapper for a pointer to protos.Nquad
 	var wnq rdf.NQuad
 	for _, nq := range nquads {
 		// Get edges from nquad using newUids.
@@ -220,8 +223,70 @@ func convertToEdges(ctx context.Context, nquads []*graphp.NQuad) (mutationResult
 	return mr, nil
 }
 
-func applyMutations(ctx context.Context, m *taskp.Mutations) error {
-	err := worker.MutateOverNetwork(ctx, m)
+func AddInternalEdge(ctx context.Context, m *protos.Mutations) error {
+	newEdges := make([]*protos.DirectedEdge, 0, 2*len(m.Edges))
+	for _, mu := range m.Edges {
+		x.AssertTrue(mu.Op == protos.DirectedEdge_DEL || mu.Op == protos.DirectedEdge_SET)
+		if mu.Op == protos.DirectedEdge_SET {
+			edge := &protos.DirectedEdge{
+				Op:     protos.DirectedEdge_SET,
+				Entity: mu.GetEntity(),
+				Attr:   "_predicate_",
+				Value:  []byte(mu.GetAttr()),
+			}
+			newEdges = append(newEdges, mu)
+			newEdges = append(newEdges, edge)
+		} else if mu.Op == protos.DirectedEdge_DEL {
+			if mu.Attr != x.DeleteAllPredicates {
+				newEdges = append(newEdges, mu)
+				if string(mu.GetValue()) == x.DeleteAllObjects {
+					// Delete the given predicate from _predicate_.
+					edge := &protos.DirectedEdge{
+						Op:     protos.DirectedEdge_DEL,
+						Entity: mu.GetEntity(),
+						Attr:   "_predicate_",
+						Value:  []byte(mu.GetAttr()),
+					}
+					newEdges = append(newEdges, edge)
+				}
+			} else {
+				// Fetch all the predicates and replace them
+				preds, err := query.GetNodePredicates(ctx, &protos.List{[]uint64{mu.GetEntity()}})
+				if err != nil {
+					return err
+				}
+				val := mu.GetValue()
+				for _, pred := range preds {
+					edge := &protos.DirectedEdge{
+						Op:     protos.DirectedEdge_DEL,
+						Entity: mu.GetEntity(),
+						Attr:   string(pred.Val),
+						Value:  val,
+					}
+					newEdges = append(newEdges, edge)
+				}
+				edge := &protos.DirectedEdge{
+					Op:     protos.DirectedEdge_DEL,
+					Entity: mu.GetEntity(),
+					Attr:   "_predicate_",
+					Value:  val,
+				}
+				// Delete all the _predicate_ values
+				edge.Attr = "_predicate_"
+				newEdges = append(newEdges, edge)
+			}
+		}
+	}
+	m.Edges = newEdges
+	return nil
+}
+
+func applyMutations(ctx context.Context, m *protos.Mutations) error {
+	err := AddInternalEdge(ctx, m)
+	if err != nil {
+		return x.Wrapf(err, "While adding internal edges")
+	}
+	err = worker.MutateOverNetwork(ctx, m)
 	if err != nil {
 		x.TraceError(ctx, x.Wrapf(err, "Error while MutateOverNetwork"))
 		return err
@@ -229,14 +294,25 @@ func applyMutations(ctx context.Context, m *taskp.Mutations) error {
 	return nil
 }
 
-func convertAndApply(ctx context.Context, mutation *graphp.Mutation) (map[string]uint64, error) {
+func ismutationAllowed(ctx context.Context, mutation *protos.Mutation) bool {
+	if *nomutations {
+		shareAllowed, ok := ctx.Value("_share_").(bool)
+		if !ok || !shareAllowed {
+			return false
+		}
+	}
+
+	return true
+}
+
+func convertAndApply(ctx context.Context, mutation *protos.Mutation) (map[string]uint64, error) {
 	var allocIds map[string]uint64
-	var m taskp.Mutations
+	var m protos.Mutations
 	var err error
 	var mr mutationResult
 
-	if *nomutations {
-		return nil, fmt.Errorf("Mutations are forbidden on this server.")
+	if !ismutationAllowed(ctx, mutation) {
+		return nil, mutationNotAllowedErr
 	}
 
 	if mr, err = convertToEdges(ctx, mutation.Set); err != nil {
@@ -244,7 +320,7 @@ func convertAndApply(ctx context.Context, mutation *graphp.Mutation) (map[string
 	}
 	m.Edges, allocIds = mr.edges, mr.newUids
 	for i := range m.Edges {
-		m.Edges[i].Op = taskp.DirectedEdge_SET
+		m.Edges[i].Op = protos.DirectedEdge_SET
 	}
 
 	if mr, err = convertToEdges(ctx, mutation.Del); err != nil {
@@ -252,7 +328,7 @@ func convertAndApply(ctx context.Context, mutation *graphp.Mutation) (map[string
 	}
 	for i := range mr.edges {
 		edge := mr.edges[i]
-		edge.Op = taskp.DirectedEdge_DEL
+		edge.Op = protos.DirectedEdge_DEL
 		m.Edges = append(m.Edges, edge)
 	}
 
@@ -263,38 +339,49 @@ func convertAndApply(ctx context.Context, mutation *graphp.Mutation) (map[string
 	return allocIds, nil
 }
 
-func enrichSchema(updates []*graphp.SchemaUpdate) error {
+func enrichSchema(updates []*protos.SchemaUpdate) error {
 	for _, schema := range updates {
 		typ := types.TypeID(schema.ValueType)
 		if typ == types.UidID {
 			continue
 		}
-		if len(schema.Tokenizer) == 0 && schema.Directive == graphp.SchemaUpdate_INDEX {
+		if len(schema.Tokenizer) == 0 && schema.Directive == protos.SchemaUpdate_INDEX {
 			schema.Tokenizer = []string{tok.Default(typ).Name()}
-		} else if len(schema.Tokenizer) > 0 && schema.Directive != graphp.SchemaUpdate_INDEX {
+		} else if len(schema.Tokenizer) > 0 && schema.Directive != protos.SchemaUpdate_INDEX {
 			return x.Errorf("Tokenizers present without indexing on attr %s", schema.Predicate)
 		}
 		// check for valid tokeniser types and duplicates
 		var seen = make(map[string]bool)
+		var seenSortableTok bool
 		for _, t := range schema.Tokenizer {
 			tokenizer, has := tok.GetTokenizer(t)
 			if !has {
 				return x.Errorf("Invalid tokenizer %s", t)
+			}
+			if tokenizer.Type() != typ {
+				return x.Errorf("Tokenizer: %s isn't valid for predicate: %s of type: %s",
+					tokenizer.Name(), schema.Predicate, typ.Name())
 			}
 			if _, ok := seen[tokenizer.Name()]; !ok {
 				seen[tokenizer.Name()] = true
 			} else {
 				return x.Errorf("Duplicate tokenizers present for attr %s", schema.Predicate)
 			}
+			if tokenizer.IsSortable() {
+				if seenSortableTok {
+					return x.Errorf("More than one sortable index encountered for: %v",
+						schema.Predicate)
+				}
+				seenSortableTok = true
+			}
 		}
-
 	}
 	return nil
 }
 
 // This function is used to run mutations for the requests from different
 // language clients.
-func runMutations(ctx context.Context, mu *graphp.Mutation) (map[string]uint64, error) {
+func runMutations(ctx context.Context, mu *protos.Mutation) (map[string]uint64, error) {
 	var allocIds map[string]uint64
 	var err error
 
@@ -302,7 +389,7 @@ func runMutations(ctx context.Context, mu *graphp.Mutation) (map[string]uint64, 
 		return nil, err
 	}
 
-	mutation := &graphp.Mutation{Set: mu.Set, Del: mu.Del, Schema: mu.Schema}
+	mutation := &protos.Mutation{Set: mu.Set, Del: mu.Del, Schema: mu.Schema}
 	if allocIds, err = convertAndApply(ctx, mutation); err != nil {
 		return nil, err
 	}
@@ -312,9 +399,9 @@ func runMutations(ctx context.Context, mu *graphp.Mutation) (map[string]uint64, 
 // This function is used to run mutations for the requests received from the
 // http client.
 func mutationHandler(ctx context.Context, mu *gql.Mutation) (map[string]uint64, error) {
-	var set []*graphp.NQuad
-	var del []*graphp.NQuad
-	var s []*graphp.SchemaUpdate
+	var set []*protos.NQuad
+	var del []*protos.NQuad
+	var s []*protos.SchemaUpdate
 	var allocIds map[string]uint64
 	var err error
 
@@ -336,7 +423,7 @@ func mutationHandler(ctx context.Context, mu *gql.Mutation) (map[string]uint64, 
 		}
 	}
 
-	mutation := &graphp.Mutation{Set: set, Del: del, Schema: s}
+	mutation := &protos.Mutation{Set: set, Del: del, Schema: s}
 	if allocIds, err = convertAndApply(ctx, mutation); err != nil {
 		return nil, err
 	}
@@ -344,19 +431,23 @@ func mutationHandler(ctx context.Context, mu *gql.Mutation) (map[string]uint64, 
 }
 
 func healthCheck(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	if worker.HealthCheck() {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	} else {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}
 }
 
 // parseQueryAndMutation handles the cases where the query parsing code can hang indefinitely.
 // We allow 1 second for parsing the query; and then give up.
-func parseQueryAndMutation(ctx context.Context, query string) (res gql.Result, err error) {
-	x.Trace(ctx, "Query received: %v", query)
+func parseQueryAndMutation(ctx context.Context, r gql.Request) (res gql.Result, err error) {
+	x.Trace(ctx, "Query received: %v", r.Str)
 	errc := make(chan error, 1)
 
 	go func() {
 		var err error
-		res, err = gql.Parse(query)
+		res, err = gql.Parse(r)
 		errc <- err
 	}()
 
@@ -381,50 +472,15 @@ type wrappedErr struct {
 	Message string
 }
 
-func processRequest(ctx context.Context, gq *gql.GraphQuery,
-	l *query.Latency) (*query.SubGraph, wrappedErr) {
-	if gq == nil || (len(gq.UID) == 0 && gq.Func == nil) {
-		return &query.SubGraph{}, wrappedErr{nil, x.Success}
-	}
-
-	sg, err := query.ToSubGraph(ctx, gq)
-	if err != nil {
-		x.TraceError(ctx, x.Wrapf(err, "Error while conversion to internal format"))
-		return &query.SubGraph{}, wrappedErr{err, x.ErrorInvalidRequest}
-	}
-
-	l.Parsing = time.Since(l.Start)
-	x.Trace(ctx, "Query parsed")
-
-	rch := make(chan error)
-	go query.ProcessGraph(ctx, sg, nil, rch)
-	err = <-rch
-	if err != nil {
-		x.TraceError(ctx, x.Wrapf(err, "Error while executing query"))
-		return &query.SubGraph{}, wrappedErr{err, x.Error}
-	}
-
-	l.Processing = time.Since(l.Start) - l.Parsing
-	x.Trace(ctx, "Graph processed")
-
-	if len(*dumpSubgraph) > 0 {
-		x.Checkf(os.MkdirAll(*dumpSubgraph, 0700), *dumpSubgraph)
-		s := time.Now().Format("20060102.150405.000000.gob")
-		filename := path.Join(*dumpSubgraph, s)
-		f, err := os.Create(filename)
-		x.Checkf(err, filename)
-		enc := gob.NewEncoder(f)
-		x.Check(enc.Encode(sg))
-		x.Checkf(f.Close(), filename)
-	}
-	return sg, wrappedErr{nil, ""}
-}
-
 func hasGQLOps(mu *gql.Mutation) bool {
 	return len(mu.Set) > 0 || len(mu.Del) > 0 || len(mu.Schema) > 0
 }
 
 func queryHandler(w http.ResponseWriter, r *http.Request) {
+	if !worker.HealthCheck() {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
 	// Add a limit on how many pending queries can be run in the system.
 	pendingQueries <- struct{}{}
 	defer func() { <-pendingQueries }()
@@ -435,6 +491,7 @@ func queryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method != "POST" {
 		x.SetStatus(w, x.ErrorInvalidMethod, "Invalid method")
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
@@ -453,12 +510,19 @@ func queryHandler(w http.ResponseWriter, r *http.Request) {
 	req, err := ioutil.ReadAll(r.Body)
 	q := string(req)
 	if err != nil || len(q) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
 		x.TraceError(ctx, x.Wrapf(err, "Error while reading query"))
 		x.SetStatus(w, x.ErrorInvalidRequest, "Invalid request encountered.")
 		return
 	}
 
-	res, err := parseQueryAndMutation(ctx, q)
+	parseStart := time.Now()
+	res, err := parseQueryAndMutation(ctx, gql.Request{
+		Str:       q,
+		Variables: map[string]string{},
+		Http:      true,
+	})
+	l.Parsing += time.Since(parseStart)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -477,6 +541,7 @@ func queryHandler(w http.ResponseWriter, r *http.Request) {
 	// If we have mutations, run them first.
 	if res.Mutation != nil && hasGQLOps(res.Mutation) {
 		if allocIds, err = mutationHandler(ctx, res.Mutation); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
 			x.TraceError(ctx, x.Wrapf(err, "Error while handling mutations"))
 			x.SetStatus(w, x.Error, err.Error())
 			return
@@ -488,15 +553,24 @@ func queryHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	var schemaNode []*graphp.SchemaNode
+	var schemaNode []*protos.SchemaNode
 	if res.Schema != nil {
+		execStart := time.Now()
 		if schemaNode, err = worker.GetSchemaOverNetwork(ctx, res.Schema); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
 			x.TraceError(ctx, x.Wrapf(err, "Error while fetching schema"))
 			x.SetStatus(w, x.Error, err.Error())
 			return
 		}
+		l.Processing += time.Since(execStart)
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+	var addLatency bool
+	// If there is an error parsing, then addLatency would remain false.
+	addLatency, _ = strconv.ParseBool(r.URL.Query().Get("latency"))
+	debug, _ := strconv.ParseBool(r.URL.Query().Get("debug"))
+	addLatency = addLatency || debug
 	if len(res.Query) == 0 {
 		mp := map[string]interface{}{}
 		if res.Mutation != nil {
@@ -506,11 +580,19 @@ func queryHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		// Either Schema or query can be specified
 		if res.Schema != nil {
-			mp["schema"] = schemaNode
+			js, err := json.Marshal(schemaNode)
+			if err != nil {
+				x.SetStatus(w, "Error", "Unable to marshal schema")
+			}
+			mp["schema"] = json.RawMessage(string(js))
+			if addLatency {
+				mp["server_latency"] = l.ToMap()
+			}
 		}
 		if js, err := json.Marshal(mp); err == nil {
 			w.Write(js)
 		} else {
+			w.WriteHeader(http.StatusBadRequest)
 			x.SetStatus(w, "Error", "Unable to marshal map")
 		}
 		return
@@ -519,6 +601,7 @@ func queryHandler(w http.ResponseWriter, r *http.Request) {
 	sgl, err := query.ProcessQuery(ctx, res, &l)
 	if err != nil {
 		x.TraceError(ctx, x.Wrapf(err, "Error while Executing query"))
+		w.WriteHeader(http.StatusBadRequest)
 		x.SetStatus(w, x.ErrorInvalidRequest, err.Error())
 		return
 	}
@@ -536,8 +619,7 @@ func queryHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	err = query.ToJson(&l, sgl, w, allocIdsStr)
+	err = query.ToJson(&l, sgl, w, allocIdsStr, addLatency)
 	if err != nil {
 		// since we performed w.Write in ToJson above,
 		// calling WriteHeader with 500 code will be ignored.
@@ -547,6 +629,58 @@ func queryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	x.Trace(ctx, "Latencies: Total: %v Parsing: %v Process: %v Json: %v",
 		time.Since(l.Start), l.Parsing, l.Processing, l.Json)
+}
+
+func shareHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	addCorsHeaders(w)
+
+	if r.Method != "POST" {
+		x.SetStatus(w, x.ErrorInvalidMethod, "Invalid method")
+		return
+	}
+
+	// Set context to allow mutation
+	ctx := context.WithValue(context.Background(), "_share_", true)
+
+	defer r.Body.Close()
+	rawQuery, err := ioutil.ReadAll(r.Body)
+	if err != nil || len(rawQuery) == 0 {
+		x.TraceError(ctx, x.Wrapf(err, "Error while reading the stringified query payload"))
+		x.SetStatus(w, x.ErrorInvalidRequest, "Invalid request encountered.")
+		return
+	}
+
+	// Generate mutation with query and hash
+	queryHash := sha256.Sum256(rawQuery)
+	mutation := gql.Mutation{
+		Set: fmt.Sprintf("<_:share> <_share_> %q . \n <_:share> <_share_hash_> \"%x\" .", rawQuery, queryHash),
+	}
+
+	var allocIds map[string]uint64
+	var allocIdsStr map[string]string
+	if allocIds, err = mutationHandler(ctx, &mutation); err != nil {
+		x.TraceError(ctx, x.Wrapf(err, "Error while handling mutations"))
+		x.SetStatus(w, x.Error, err.Error())
+		return
+	}
+	// convert the new UIDs to hex string.
+	allocIdsStr = make(map[string]string)
+	for k, v := range allocIds {
+		allocIdsStr[k] = fmt.Sprintf("%#x", v)
+	}
+
+	payload := map[string]interface{}{
+		"code":    x.Success,
+		"message": "Done",
+		"uids":    allocIdsStr,
+	}
+
+	if res, err := json.Marshal(payload); err == nil {
+		w.Write(res)
+	} else {
+		x.SetStatus(w, "Error", "Unable to marshal map")
+	}
 }
 
 // storeStatsHandler outputs some basic stats for data store.
@@ -613,26 +747,34 @@ func backupHandler(w http.ResponseWriter, r *http.Request) {
 	x.SetStatus(w, x.Success, "Backup completed.")
 }
 
-func hasGraphOps(mu *graphp.Mutation) bool {
+func hasGraphOps(mu *protos.Mutation) bool {
 	return len(mu.Set) > 0 || len(mu.Del) > 0 || len(mu.Schema) > 0
 }
 
-// server is used to implement graphp.DgraphServer
+// server is used to implement protos.DgraphServer
 type grpcServer struct{}
 
 // This method is used to execute the query and return the response to the
 // client as a protocol buffer message.
 func (s *grpcServer) Run(ctx context.Context,
-	req *graphp.Request) (resp *graphp.Response, err error) {
+	req *protos.Request) (resp *protos.Response, err error) {
+	// we need membership information
+	if !worker.HealthCheck() {
+		x.Trace(ctx, "This server hasn't yet been fully initiated. Please retry later.")
+		return resp, x.Errorf("Uninitiated server. Please retry later")
+	}
 	var allocIds map[string]uint64
-	var schemaNodes []*graphp.SchemaNode
+	var schemaNodes []*protos.SchemaNode
 	if rand.Float64() < *tracing {
 		tr := trace.New("Dgraph", "GrpcQuery")
 		defer tr.Finish()
 		ctx = trace.NewContext(ctx, tr)
 	}
 
-	resp = new(graphp.Response)
+	// Sanitize the context of the keys used for internal purposes only
+	ctx = context.WithValue(ctx, "_share_", nil)
+
+	resp = new(protos.Response)
 	if len(req.Query) == 0 && req.Mutation == nil {
 		x.TraceError(ctx, x.Errorf("Empty query and mutation."))
 		return resp, fmt.Errorf("Empty query and mutation.")
@@ -640,11 +782,16 @@ func (s *grpcServer) Run(ctx context.Context,
 
 	var l query.Latency
 	l.Start = time.Now()
-	x.Trace(ctx, "Query received: %v", req.Query)
-	res, err := parseQueryAndMutation(ctx, req.Query)
+	x.Trace(ctx, "Query received: %v, variables: %v", req.Query, req.Vars)
+	res, err := parseQueryAndMutation(ctx, gql.Request{
+		Str:       req.Query,
+		Variables: req.Vars,
+		Http:      false,
+	})
 	if err != nil {
 		return resp, err
 	}
+	l.Parsing += time.Since(l.Start)
 
 	// If mutations are part of the query, we run them through the mutation handler
 	// same as the http client.
@@ -674,10 +821,12 @@ func (s *grpcServer) Run(ctx context.Context,
 	}
 
 	if schema != nil {
+		execStart := time.Now()
 		if schemaNodes, err = worker.GetSchemaOverNetwork(ctx, schema); err != nil {
 			x.TraceError(ctx, x.Wrapf(err, "Error while fetching schema"))
 			return resp, err
 		}
+		l.Processing += time.Since(execStart)
 	}
 	resp.Schema = schemaNodes
 
@@ -694,11 +843,36 @@ func (s *grpcServer) Run(ctx context.Context,
 	}
 	resp.N = nodes
 
-	gl := new(graphp.Latency)
+	gl := new(protos.Latency)
 	gl.Parsing, gl.Processing, gl.Pb = l.Parsing.String(), l.Processing.String(),
 		l.ProtocolBuffer.String()
 	resp.L = gl
 	return resp, err
+}
+
+func (s *grpcServer) CheckVersion(ctx context.Context, c *protos.Check) (v *protos.Version,
+	err error) {
+	// we need membership information
+	if !worker.HealthCheck() {
+		x.Trace(ctx, "This server hasn't yet been fully initiated. Please retry later.")
+		return v, x.Errorf("Uninitiated server. Please retry later")
+	}
+
+	v = new(protos.Version)
+	v.Tag = x.Version()
+	return v, nil
+}
+
+var uiDir string
+
+func init() {
+	// uiDir can also be set through -ldflags while doing a release build. In that
+	// case it points to usr/local/share/dgraph/assets where we store assets for
+	// the user. In other cases, it should point to the build directory within the repository.
+	flag.StringVar(&uiDir, "ui", uiDir, "Directory which contains assets for the user interface")
+	if uiDir == "" {
+		uiDir = os.Getenv("GOPATH") + "/src/github.com/adibiarsotp/dgraph/dashboard/build"
+	}
 }
 
 func checkFlagsAndInitDirs() {
@@ -712,34 +886,48 @@ func checkFlagsAndInitDirs() {
 	x.Check(os.MkdirAll(*postingDir, 0700))
 }
 
-func setupListener(addr string, port int) (net.Listener, error) {
+func setupListener(addr string, port int) (listener net.Listener, err error) {
+	var reload func()
 	laddr := fmt.Sprintf("%s:%d", addr, port)
 	if !*tlsEnabled {
-		return net.Listen("tcp", laddr)
+		listener, err = net.Listen("tcp", laddr)
+	} else {
+		var tlsCfg *tls.Config
+		tlsCfg, reload, err = x.GenerateTLSConfig(x.TLSHelperConfig{
+			ConfigType:             x.TLSServerConfig,
+			CertRequired:           *tlsEnabled,
+			Cert:                   *tlsCert,
+			Key:                    *tlsKey,
+			KeyPassphrase:          *tlsKeyPass,
+			ClientAuth:             *tlsClientAuth,
+			ClientCACerts:          *tlsClientCACerts,
+			UseSystemClientCACerts: *tlsSystemCACerts,
+			MinVersion:             *tlsMinVersion,
+			MaxVersion:             *tlsMaxVersion,
+		})
+		if err != nil {
+			return nil, err
+		}
+		listener, err = tls.Listen("tcp", laddr, tlsCfg)
 	}
-
-	tlsCfg, err := x.GenerateTLSConfig(x.TLSHelperConfig{
-		CertRequired:           *tlsEnabled,
-		Cert:                   *tlsCert,
-		Key:                    *tlsKey,
-		KeyPassphrase:          *tlsKeyPass,
-		ClientAuth:             *tlsClientAuth,
-		ClientCACerts:          *tlsClientCACerts,
-		UseSystemClientCACerts: *tlsSystemCACerts,
-		MinVersion:             *tlsMinVersion,
-		MaxVersion:             *tlsMaxVersion,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	return tls.Listen("tcp", laddr, tlsCfg)
+	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGHUP)
+		for range sigChan {
+			log.Println("SIGHUP signal received")
+			if reload != nil {
+				reload()
+				log.Println("TLS certificates and CAs reloaded")
+			}
+		}
+	}()
+	return listener, err
 }
 
 func serveGRPC(l net.Listener) {
 	defer func() { finishCh <- struct{}{} }()
 	s := grpc.NewServer(grpc.CustomCodec(&query.Codec{}))
-	graphp.RegisterDgraphServer(s, &grpcServer{})
+	protos.RegisterDgraphServer(s, &grpcServer{})
 	err := s.Serve(l)
 	log.Printf("gRpc server stopped : %s", err.Error())
 	s.GracefulStop()
@@ -785,13 +973,16 @@ func setupServer(che chan error) {
 
 	http.HandleFunc("/health", healthCheck)
 	http.HandleFunc("/query", queryHandler)
+	http.HandleFunc("/share", shareHandler)
 	http.HandleFunc("/debug/store", storeStatsHandler)
 	http.HandleFunc("/admin/shutdown", shutDownHandler)
 	http.HandleFunc("/admin/backup", backupHandler)
 
 	// UI related API's.
-	indexHtml := substitutePort()
-	http.Handle("/", replacePort(http.FileServer(http.Dir(*uiDir)), indexHtml))
+	// Share urls have a hex string as the shareId. So if
+	// our url path matches it, we wan't to serve index.html.
+	reg := regexp.MustCompile(`\/0[xX][0-9a-fA-F]+`)
+	http.Handle("/", homeHandler(http.FileServer(http.Dir(uiDir)), reg))
 	http.HandleFunc("/ui/keywords", keywordHandler)
 
 	// Initilize the servers.
@@ -821,8 +1012,11 @@ func main() {
 
 	// All the writes to posting store should be synchronous. We use batched writers
 	// for posting lists, so the cost of sync writes is amortized.
-	ps, err := store.NewSyncStore(*postingDir)
-	x.Checkf(err, "Error initializing postings store")
+	opt := badger.DefaultOptions
+	opt.SyncWrites = true
+	opt.Dir = *postingDir
+	ps, err := badger.NewKV(&opt)
+	x.Checkf(err, "Error while creating badger KV posting store")
 	defer ps.Close()
 
 	x.Check(group.ParseGroupConfig(*gconf))
@@ -836,7 +1030,8 @@ func main() {
 	// setup shutdown os signal handler
 	sdCh := make(chan os.Signal, 1)
 	defer close(sdCh)
-	signal.Notify(sdCh, os.Interrupt, syscall.SIGTERM)
+	// sigint : Ctrl-C, sigquit : Ctrl-\ (backslash), sigterm : kill command.
+	signal.Notify(sdCh, os.Interrupt, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
 	go func() {
 		_, ok := <-sdCh
 		if ok {

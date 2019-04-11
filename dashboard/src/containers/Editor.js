@@ -1,16 +1,7 @@
 import React, { Component } from "react";
 import { connect } from "react-redux";
-import {
-  Button,
-  Form,
-  FormControl,
-  FormGroup,
-  ControlLabel,
-  Col
-} from "react-bootstrap";
 
-import { runQuery, updateRegex, selectQuery } from "../actions";
-import { timeout, checkStatus, sortStrings, dgraphAddress } from "./Helpers";
+import { timeout, checkStatus, sortStrings, getEndpointBaseURL } from "../lib/helpers";
 import "../assets/css/Editor.css";
 
 require("codemirror/addon/hint/show-hint.css");
@@ -22,45 +13,12 @@ class Editor extends Component {
 
   render() {
     return (
-      <div>
-        <Form horizontal bsSize="sm" style={{ marginBottom: "10px" }}>
-          <FormGroup bsSize="sm">
-            <Col xs={2}>
-              <ControlLabel>Query</ControlLabel>
-            </Col>
-            <Col xs={8}>
-              <FormControl
-                type="text"
-                placeholder="Regex to choose property for display"
-                value={this.props.regex}
-                onChange={e => {
-                  e.preventDefault();
-                  this.props.updateRegex(e.target.value);
-                }}
-              />
-            </Col>
-            <Col xs={2}>
-              <Button
-                type="submit"
-                className="btn btn-primary pull-right"
-                onClick={e => {
-                  e.preventDefault();
-                  this.props.onRunQuery(this.getValue());
-                }}
-              >
-                Run
-              </Button>
-            </Col>
-          </FormGroup>
-        </Form>
-
-        <div
-          className="Editor-basic"
-          ref={editor => {
-            this._editor = editor;
-          }}
-        />
-      </div>
+      <div
+        className="Editor-basic"
+        ref={editor => {
+          this._editor = editor;
+        }}
+      />
     );
   }
 
@@ -71,6 +29,8 @@ class Editor extends Component {
   };
 
   componentDidMount = () => {
+    const { saveCodeMirrorInstance } = this.props;
+
     const CodeMirror = require("codemirror");
     require("codemirror/addon/hint/show-hint");
     require("codemirror/addon/comment/comment");
@@ -90,7 +50,7 @@ class Editor extends Component {
     let keywords = [];
     timeout(
       1000,
-      fetch(dgraphAddress() + "/ui/keywords", {
+      fetch(getEndpointBaseURL() + "/ui/keywords", {
         method: "GET",
         mode: "cors"
       })
@@ -123,7 +83,7 @@ class Editor extends Component {
 
     timeout(
       1000,
-      fetch(dgraphAddress() + "/query", {
+      fetch(getEndpointBaseURL() + "/query", {
         method: "POST",
         mode: "cors",
         body: "schema {}"
@@ -131,11 +91,13 @@ class Editor extends Component {
         .then(checkStatus)
         .then(response => response.json())
         .then(function(result) {
-          keywords = keywords.concat(
-            result.schema.map(kw => {
-              return kw.predicate;
-            })
-          );
+          if (result.schema && result.schema.length !== 0) {
+            keywords = keywords.concat(
+              result.schema.map(kw => {
+                return kw.predicate;
+              })
+            );
+          }
         })
     )
       .catch(function(error) {
@@ -155,7 +117,7 @@ class Editor extends Component {
       tabSize: 2,
       lineWrapping: true,
       mode: "graphql",
-      theme: "graphiql",
+      theme: "neo",
       keyMap: "sublime",
       autoCloseBrackets: true,
       completeSingle: false,
@@ -183,18 +145,6 @@ class Editor extends Component {
 
     CodeMirror.registerHelper("hint", "fromList", function(cm, options) {
       var cur = cm.getCursor(), token = cm.getTokenAt(cur);
-
-      // This is so that we automatically have a space before (, so that auto-
-      // complete inside braces works. Otherwise it doesn't work for
-      // director.film(orderasc: release_date).
-      let openBrac = token.string.indexOf("(");
-      if (
-        openBrac !== -1 &&
-        token.string[openBrac - 1] !== undefined &&
-        token.string[openBrac - 1] !== " "
-      ) {
-        cm.replaceRange(" ", { line: cur.line, ch: token.start + openBrac });
-      }
 
       var to = CodeMirror.Pos(cur.line, token.end);
       let from = "", term = "";
@@ -256,7 +206,13 @@ class Editor extends Component {
     };
 
     this.editor.on("change", cm => {
-      this.props.updateQuery(this.editor.getValue());
+      const { onUpdateQuery } = this.props;
+      if (!onUpdateQuery) {
+        return;
+      }
+
+      const val = this.editor.getValue();
+      onUpdateQuery(val);
     });
 
     this.editor.on("keydown", function(cm, event) {
@@ -266,18 +222,17 @@ class Editor extends Component {
         CodeMirror.commands.autocomplete(cm);
       }
     });
+
+    if (saveCodeMirrorInstance) {
+      saveCodeMirrorInstance(this.editor);
+    }
   };
 }
 
 const mapStateToProps = state => ({
-  query: state.query.text,
-  regex: state.query.propertyRegex
 });
 
 const mapDispatchToProps = {
-  onRunQuery: runQuery,
-  updateQuery: selectQuery,
-  updateRegex
 };
 
 export default connect(mapStateToProps, mapDispatchToProps)(Editor);

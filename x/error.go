@@ -1,17 +1,18 @@
 /*
- * Copyright 2016 Dgraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package x
@@ -109,7 +110,7 @@ func Fatalf(format string, args ...interface{}) {
 }
 
 const (
-	dgraphPrefix  = "github.com/dgraph-io/dgraph/"
+	dgraphPrefix  = "github.com/adibiarsotp/dgraph/"
 	runtimePrefix = "src/runtime/"
 	testingPrefix = "src/testing/"
 )
@@ -130,12 +131,12 @@ func shortenedErrorString(err error) string {
 
 	// Here is a sample input:
 	//	 some error
-	//	 github.com/dgraph-io/dgraph/x.Errorf
-	//		/home/jchiu/go/src/github.com/dgraph-io/dgraph/x/error.go:89
+	//	 github.com/adibiarsotp/dgraph/x.Errorf
+	//		/home/jchiu/go/src/github.com/adibiarsotp/dgraph/x/error.go:89
 	//	 main.f
-	//		/home/jchiu/go/src/github.com/dgraph-io/dgraph/x/tmp/main.go:10
+	//		/home/jchiu/go/src/github.com/adibiarsotp/dgraph/x/tmp/main.go:10
 	//	 main.main
-	//		/home/jchiu/go/src/github.com/dgraph-io/dgraph/x/tmp/main.go:15
+	//		/home/jchiu/go/src/github.com/adibiarsotp/dgraph/x/tmp/main.go:15
 	//	 runtime.main
 	//		/usr/lib/go-1.7/src/runtime/proc.go:183
 	//	 runtime.goexit

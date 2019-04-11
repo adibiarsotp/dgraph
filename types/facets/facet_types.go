@@ -1,62 +1,63 @@
 /*
- * Copyright 2017 Dgraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package facets
 
-import "github.com/dgraph-io/dgraph/protos/facetsp"
+import "github.com/adibiarsotp/dgraph/protos"
 
 const (
-	Int32ID    = TypeID(facetsp.Facet_INT32)
-	FloatID    = TypeID(facetsp.Facet_FLOAT)
-	BoolID     = TypeID(facetsp.Facet_BOOL)
-	DateTimeID = TypeID(facetsp.Facet_DATETIME)
-	StringID   = TypeID(facetsp.Facet_STRING)
+	IntID      = TypeID(protos.Facet_INT)
+	FloatID    = TypeID(protos.Facet_FLOAT)
+	BoolID     = TypeID(protos.Facet_BOOL)
+	DateTimeID = TypeID(protos.Facet_DATETIME)
+	StringID   = TypeID(protos.Facet_STRING)
 )
 
-type TypeID facetsp.Facet_ValType
+type TypeID protos.Facet_ValType
 
-// ValTypeForTypeID gives facetsp.Facet_ValType for given TypeID
-func ValTypeForTypeID(typId TypeID) facetsp.Facet_ValType {
+// ValTypeForTypeID gives protos.Facet_ValType for given TypeID
+func ValTypeForTypeID(typId TypeID) protos.Facet_ValType {
 	switch typId {
-	case Int32ID:
-		return facetsp.Facet_INT32
+	case IntID:
+		return protos.Facet_INT
 	case FloatID:
-		return facetsp.Facet_FLOAT
+		return protos.Facet_FLOAT
 	case BoolID:
-		return facetsp.Facet_BOOL
+		return protos.Facet_BOOL
 	case DateTimeID:
-		return facetsp.Facet_DATETIME
+		return protos.Facet_DATETIME
 	case StringID:
-		return facetsp.Facet_STRING
+		return protos.Facet_STRING
 	}
 	panic("Unhandled case in ValTypeForTypeID.")
 }
 
-// TypeIDForValType gives TypeID for facetsp.Facet_ValType
-func TypeIDForValType(valType facetsp.Facet_ValType) TypeID {
+// TypeIDForValType gives TypeID for protos.Facet_ValType
+func TypeIDForValType(valType protos.Facet_ValType) TypeID {
 	switch valType {
-	case facetsp.Facet_INT32:
-		return Int32ID
-	case facetsp.Facet_FLOAT:
+	case protos.Facet_INT:
+		return IntID
+	case protos.Facet_FLOAT:
 		return FloatID
-	case facetsp.Facet_BOOL:
+	case protos.Facet_BOOL:
 		return BoolID
-	case facetsp.Facet_DATETIME:
+	case protos.Facet_DATETIME:
 		return DateTimeID
-	case facetsp.Facet_STRING:
+	case protos.Facet_STRING:
 		return StringID
 	}
 	panic("Unhandled case in TypeIDForValType.")

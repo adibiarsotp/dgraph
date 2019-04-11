@@ -1,17 +1,18 @@
 /*
- * Copyright 2016 Dgraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package tok
@@ -20,10 +21,11 @@ import (
 	"encoding/binary"
 	"time"
 
+	farm "github.com/dgryski/go-farm"
 	geom "github.com/twpayne/go-geom"
 
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 // Tokenizer defines what a tokenizer must provide.
@@ -40,8 +42,13 @@ type Tokenizer interface {
 	// Identifier returns the prefix byte for this token type.
 	Identifier() byte
 
-	// IsSortable returns if the index can be used for sorting.
+	// IsSortable returns true if the tokenizer can be used for sorting/ordering.
 	IsSortable() bool
+
+	// IsLossy() returns true if we don't store the values directly as index keys
+	// during tokenization. If a predicate is tokenized using an IsLossy() tokenizer,
+	// then we need to fetch the actual value and compare.
+	IsLossy() bool
 }
 
 var (
@@ -51,20 +58,24 @@ var (
 
 func init() {
 	RegisterTokenizer(GeoTokenizer{})
-	RegisterTokenizer(Int32Tokenizer{})
+	RegisterTokenizer(IntTokenizer{})
 	RegisterTokenizer(FloatTokenizer{})
 	RegisterTokenizer(DateTokenizer{})
 	RegisterTokenizer(DateTimeTokenizer{})
 	RegisterTokenizer(TermTokenizer{})
 	RegisterTokenizer(ExactTokenizer{})
+	RegisterTokenizer(BoolTokenizer{})
+	RegisterTokenizer(TrigramTokenizer{})
+	RegisterTokenizer(HashTokenizer{})
 	SetDefault(types.GeoID, "geo")
-	SetDefault(types.Int32ID, "int")
+	SetDefault(types.IntID, "int")
 	SetDefault(types.FloatID, "float")
 	SetDefault(types.DateID, "date")
 	SetDefault(types.DateTimeID, "datetime")
 	SetDefault(types.StringID, "term")
+	SetDefault(types.BoolID, "bool")
 
-	// Check for duplicate prexif bytes.
+	// Check for duplicate prefix bytes.
 	usedIds := make(map[byte]struct{})
 	for _, tok := range tokenizers {
 		tokID := tok.Identifier()
@@ -122,46 +133,51 @@ func (t GeoTokenizer) Tokens(sv types.Val) ([]string, error) {
 }
 func (t GeoTokenizer) Identifier() byte { return 0x5 }
 func (t GeoTokenizer) IsSortable() bool { return false }
+func (t GeoTokenizer) IsLossy() bool    { return true }
 
-type Int32Tokenizer struct{}
+type IntTokenizer struct{}
 
-func (t Int32Tokenizer) Name() string       { return "int" }
-func (t Int32Tokenizer) Type() types.TypeID { return types.Int32ID }
-func (t Int32Tokenizer) Tokens(sv types.Val) ([]string, error) {
-	return []string{encodeToken(encodeInt(sv.Value.(int32)), t.Identifier())}, nil
+func (t IntTokenizer) Name() string       { return "int" }
+func (t IntTokenizer) Type() types.TypeID { return types.IntID }
+func (t IntTokenizer) Tokens(sv types.Val) ([]string, error) {
+	return []string{encodeToken(encodeInt(sv.Value.(int64)), t.Identifier())}, nil
 }
-func (t Int32Tokenizer) Identifier() byte { return 0x6 }
-func (t Int32Tokenizer) IsSortable() bool { return true }
+func (t IntTokenizer) Identifier() byte { return 0x6 }
+func (t IntTokenizer) IsSortable() bool { return true }
+func (t IntTokenizer) IsLossy() bool    { return false }
 
 type FloatTokenizer struct{}
 
 func (t FloatTokenizer) Name() string       { return "float" }
 func (t FloatTokenizer) Type() types.TypeID { return types.FloatID }
 func (t FloatTokenizer) Tokens(sv types.Val) ([]string, error) {
-	return []string{encodeToken(encodeInt(int32(sv.Value.(float64))), t.Identifier())}, nil
+	return []string{encodeToken(encodeInt(int64(sv.Value.(float64))), t.Identifier())}, nil
 }
 func (t FloatTokenizer) Identifier() byte { return 0x7 }
 func (t FloatTokenizer) IsSortable() bool { return true }
+func (t FloatTokenizer) IsLossy() bool    { return true }
 
 type DateTokenizer struct{}
 
 func (t DateTokenizer) Name() string       { return "date" }
 func (t DateTokenizer) Type() types.TypeID { return types.DateID }
 func (t DateTokenizer) Tokens(sv types.Val) ([]string, error) {
-	return []string{encodeToken(encodeInt(int32(sv.Value.(time.Time).Year())), t.Identifier())}, nil
+	return []string{encodeToken(encodeInt(int64(sv.Value.(time.Time).Year())), t.Identifier())}, nil
 }
 func (t DateTokenizer) Identifier() byte { return 0x3 }
 func (t DateTokenizer) IsSortable() bool { return true }
+func (t DateTokenizer) IsLossy() bool    { return true }
 
 type DateTimeTokenizer struct{}
 
 func (t DateTimeTokenizer) Name() string       { return "datetime" }
 func (t DateTimeTokenizer) Type() types.TypeID { return types.DateTimeID }
 func (t DateTimeTokenizer) Tokens(sv types.Val) ([]string, error) {
-	return []string{encodeToken(encodeInt(int32(sv.Value.(time.Time).Year())), t.Identifier())}, nil
+	return []string{encodeToken(encodeInt(int64(sv.Value.(time.Time).Year())), t.Identifier())}, nil
 }
 func (t DateTimeTokenizer) Identifier() byte { return 0x4 }
 func (t DateTimeTokenizer) IsSortable() bool { return true }
+func (t DateTimeTokenizer) IsLossy() bool    { return true }
 
 type TermTokenizer struct{}
 
@@ -172,6 +188,7 @@ func (t TermTokenizer) Tokens(sv types.Val) ([]string, error) {
 }
 func (t TermTokenizer) Identifier() byte { return 0x1 }
 func (t TermTokenizer) IsSortable() bool { return false }
+func (t TermTokenizer) IsLossy() bool    { return true }
 
 type ExactTokenizer struct{}
 
@@ -186,19 +203,21 @@ func (t ExactTokenizer) Tokens(sv types.Val) ([]string, error) {
 }
 func (t ExactTokenizer) Identifier() byte { return 0x2 }
 func (t ExactTokenizer) IsSortable() bool { return true }
+func (t ExactTokenizer) IsLossy() bool    { return false }
 
 // Full text tokenizer, with language support
 type FullTextTokenizer struct {
 	Lang string
 }
 
-func (t FullTextTokenizer) Name() string       { return ftsTokenizerName(t.Lang) }
+func (t FullTextTokenizer) Name() string       { return FtsTokenizerName(t.Lang) }
 func (t FullTextTokenizer) Type() types.TypeID { return types.StringID }
 func (t FullTextTokenizer) Tokens(sv types.Val) ([]string, error) {
 	return getBleveTokens(t.Name(), t.Identifier(), sv)
 }
 func (t FullTextTokenizer) Identifier() byte { return 0x8 }
 func (t FullTextTokenizer) IsSortable() bool { return false }
+func (t FullTextTokenizer) IsLossy() bool    { return true }
 
 func getBleveTokens(name string, identifier byte, sv types.Val) ([]string, error) {
 	analyzer, err := bleveCache.AnalyzerNamed(name)
@@ -214,9 +233,9 @@ func getBleveTokens(name string, identifier byte, sv types.Val) ([]string, error
 	return terms, nil
 }
 
-func encodeInt(val int32) string {
-	buf := make([]byte, 5)
-	binary.BigEndian.PutUint32(buf[1:], uint32(val))
+func encodeInt(val int64) string {
+	buf := make([]byte, 9)
+	binary.BigEndian.PutUint64(buf[1:], uint64(val))
 	if val < 0 {
 		buf[0] = 0
 	} else {
@@ -231,6 +250,67 @@ func encodeToken(tok string, typ byte) string {
 
 func EncodeGeoTokens(tokens []string) {
 	for i := 0; i < len(tokens); i++ {
-		tokens[i] = encodeToken(tokens[i], 0x4)
+		tokens[i] = encodeToken(tokens[i], GeoTokenizer{}.Identifier())
 	}
 }
+
+func EncodeRegexTokens(tokens []string) {
+	for i := 0; i < len(tokens); i++ {
+		tokens[i] = encodeToken(tokens[i], TrigramTokenizer{}.Identifier())
+	}
+}
+
+type BoolTokenizer struct{}
+
+func (t BoolTokenizer) Name() string       { return "bool" }
+func (t BoolTokenizer) Type() types.TypeID { return types.BoolID }
+func (t BoolTokenizer) Tokens(v types.Val) ([]string, error) {
+	var b int64
+	if v.Value.(bool) {
+		b = 1
+	}
+	return []string{encodeToken(encodeInt(b), t.Identifier())}, nil
+}
+func (t BoolTokenizer) Identifier() byte { return 0x9 }
+func (t BoolTokenizer) IsSortable() bool { return false }
+func (t BoolTokenizer) IsLossy() bool    { return false }
+
+type TrigramTokenizer struct{}
+
+func (t TrigramTokenizer) Name() string       { return "trigram" }
+func (t TrigramTokenizer) Type() types.TypeID { return types.StringID }
+func (t TrigramTokenizer) Tokens(sv types.Val) ([]string, error) {
+	value, ok := sv.Value.(string)
+	if !ok {
+		return nil, x.Errorf("Trigram indices only supported for string types")
+	}
+	l := len(value) - 2
+	if l > 0 {
+		tokens := make([]string, l)
+		for i := 0; i < l; i++ {
+			trigram := value[i : i+3]
+			tokens[i] = encodeToken(trigram, t.Identifier())
+		}
+		return tokens, nil
+	}
+	return nil, nil
+}
+func (t TrigramTokenizer) Identifier() byte { return 0xA }
+func (t TrigramTokenizer) IsSortable() bool { return false }
+func (t TrigramTokenizer) IsLossy() bool    { return true }
+
+type HashTokenizer struct{}
+
+func (t HashTokenizer) Name() string       { return "hash" }
+func (t HashTokenizer) Type() types.TypeID { return types.StringID }
+func (t HashTokenizer) Tokens(sv types.Val) ([]string, error) {
+	term, ok := sv.Value.(string)
+	if !ok {
+		return nil, x.Errorf("Hash tokenizer only supported for string types")
+	}
+	var hash int64 = int64(farm.Hash64([]byte(term)))
+	return []string{encodeToken(encodeInt(hash), t.Identifier())}, nil
+}
+func (t HashTokenizer) Identifier() byte { return 0xB }
+func (t HashTokenizer) IsSortable() bool { return false }
+func (t HashTokenizer) IsLossy() bool    { return true }

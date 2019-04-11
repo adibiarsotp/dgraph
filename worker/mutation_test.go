@@ -1,17 +1,18 @@
 /*
-* Copyright 2016 DGraph Labs, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-* 		http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package worker
@@ -24,30 +25,28 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/dgraph-io/dgraph/group"
-	"github.com/dgraph-io/dgraph/protos/graphp"
-	"github.com/dgraph-io/dgraph/protos/taskp"
-	"github.com/dgraph-io/dgraph/protos/typesp"
-	"github.com/dgraph-io/dgraph/schema"
-	"github.com/dgraph-io/dgraph/types"
+	"github.com/adibiarsotp/dgraph/group"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/schema"
+	"github.com/adibiarsotp/dgraph/types"
 )
 
 func TestConvertEdgeType(t *testing.T) {
 	var testEdges = []struct {
-		input     *taskp.DirectedEdge
+		input     *protos.DirectedEdge
 		to        types.TypeID
 		expectErr bool
-		output    *taskp.DirectedEdge
+		output    *protos.DirectedEdge
 	}{
 		{
-			input: &taskp.DirectedEdge{
+			input: &protos.DirectedEdge{
 				Value: []byte("set edge"),
 				Label: "test-mutation",
 				Attr:  "name",
 			},
 			to:        types.StringID,
 			expectErr: false,
-			output: &taskp.DirectedEdge{
+			output: &protos.DirectedEdge{
 				Value:     []byte("set edge"),
 				Label:     "test-mutation",
 				Attr:      "name",
@@ -55,7 +54,7 @@ func TestConvertEdgeType(t *testing.T) {
 			},
 		},
 		{
-			input: &taskp.DirectedEdge{
+			input: &protos.DirectedEdge{
 				ValueId: 123,
 				Label:   "test-mutation",
 				Attr:    "name",
@@ -64,7 +63,7 @@ func TestConvertEdgeType(t *testing.T) {
 			expectErr: true,
 		},
 		{
-			input: &taskp.DirectedEdge{
+			input: &protos.DirectedEdge{
 				Value: []byte("set edge"),
 				Label: "test-mutation",
 				Attr:  "name",
@@ -87,7 +86,7 @@ func TestConvertEdgeType(t *testing.T) {
 }
 
 func TestValidateEdgeTypeError(t *testing.T) {
-	edge := &taskp.DirectedEdge{
+	edge := &protos.DirectedEdge{
 		Value: []byte("set edge"),
 		Label: "test-mutation",
 		Attr:  "name",
@@ -103,18 +102,18 @@ func TestAddToMutationArray(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(dir)
 
-	mutationsMap := make(map[uint32]*taskp.Mutations)
-	edges := []*taskp.DirectedEdge{}
-	schema := []*graphp.SchemaUpdate{}
+	mutationsMap := make(map[uint32]*protos.Mutations)
+	edges := []*protos.DirectedEdge{}
+	schema := []*protos.SchemaUpdate{}
 
-	edges = append(edges, &taskp.DirectedEdge{
+	edges = append(edges, &protos.DirectedEdge{
 		Value: []byte("set edge"),
 		Label: "test-mutation",
 	})
-	schema = append(schema, &graphp.SchemaUpdate{
+	schema = append(schema, &protos.SchemaUpdate{
 		Predicate: "name",
 	})
-	m := &taskp.Mutations{Edges: edges, Schema: schema}
+	m := &protos.Mutations{Edges: edges, Schema: schema}
 
 	addToMutationMap(mutationsMap, m)
 	mu := mutationsMap[1]
@@ -124,56 +123,56 @@ func TestAddToMutationArray(t *testing.T) {
 
 func TestCheckSchema(t *testing.T) {
 	// non uid to uid
-	err := schema.ParseBytes([]byte("name:string @index"), 1)
+	err := schema.ParseBytes([]byte("name:string @index ."), 1)
 	require.NoError(t, err)
-	s1 := &graphp.SchemaUpdate{Predicate: "name", ValueType: uint32(types.UidID)}
+	s1 := &protos.SchemaUpdate{Predicate: "name", ValueType: uint32(types.UidID)}
 	require.Error(t, checkSchema(s1))
 
 	// uid to non uid
-	err = schema.ParseBytes([]byte("name:uid"), 1)
+	err = schema.ParseBytes([]byte("name:uid ."), 1)
 	require.NoError(t, err)
-	s1 = &graphp.SchemaUpdate{Predicate: "name", ValueType: uint32(types.StringID)}
+	s1 = &protos.SchemaUpdate{Predicate: "name", ValueType: uint32(types.StringID)}
 	require.Error(t, checkSchema(s1))
 
 	// string to int
-	err = schema.ParseBytes([]byte("name:string"), 1)
+	err = schema.ParseBytes([]byte("name:string ."), 1)
 	require.NoError(t, err)
-	s1 = &graphp.SchemaUpdate{Predicate: "name", ValueType: uint32(types.FloatID)}
+	s1 = &protos.SchemaUpdate{Predicate: "name", ValueType: uint32(types.FloatID)}
 	require.NoError(t, checkSchema(s1))
 
 	// index on uid type
-	s1 = &graphp.SchemaUpdate{Predicate: "name", ValueType: uint32(types.UidID), Directive: graphp.SchemaUpdate_INDEX}
+	s1 = &protos.SchemaUpdate{Predicate: "name", ValueType: uint32(types.UidID), Directive: protos.SchemaUpdate_INDEX}
 	require.Error(t, checkSchema(s1))
 
 	// reverse on non-uid type
-	s1 = &graphp.SchemaUpdate{Predicate: "name", ValueType: uint32(types.StringID), Directive: graphp.SchemaUpdate_REVERSE}
+	s1 = &protos.SchemaUpdate{Predicate: "name", ValueType: uint32(types.StringID), Directive: protos.SchemaUpdate_REVERSE}
 	require.Error(t, checkSchema(s1))
 
-	s1 = &graphp.SchemaUpdate{Predicate: "name", ValueType: uint32(types.FloatID), Directive: graphp.SchemaUpdate_INDEX}
+	s1 = &protos.SchemaUpdate{Predicate: "name", ValueType: uint32(types.FloatID), Directive: protos.SchemaUpdate_INDEX}
 	require.NoError(t, checkSchema(s1))
 
-	s1 = &graphp.SchemaUpdate{Predicate: "friend", ValueType: uint32(types.UidID), Directive: graphp.SchemaUpdate_REVERSE}
+	s1 = &protos.SchemaUpdate{Predicate: "friend", ValueType: uint32(types.UidID), Directive: protos.SchemaUpdate_REVERSE}
 	require.NoError(t, checkSchema(s1))
 }
 
 func TestNeedReindexing(t *testing.T) {
-	s1 := typesp.Schema{ValueType: uint32(types.UidID)}
-	s2 := typesp.Schema{ValueType: uint32(types.UidID)}
+	s1 := protos.SchemaUpdate{ValueType: uint32(types.UidID)}
+	s2 := protos.SchemaUpdate{ValueType: uint32(types.UidID)}
 	require.False(t, needReindexing(s1, s2))
 
-	s1 = typesp.Schema{ValueType: uint32(types.StringID), Directive: typesp.Schema_INDEX, Tokenizer: []string{"exact"}}
-	s2 = typesp.Schema{ValueType: uint32(types.StringID), Directive: typesp.Schema_INDEX, Tokenizer: []string{"exact"}}
+	s1 = protos.SchemaUpdate{ValueType: uint32(types.StringID), Directive: protos.SchemaUpdate_INDEX, Tokenizer: []string{"exact"}}
+	s2 = protos.SchemaUpdate{ValueType: uint32(types.StringID), Directive: protos.SchemaUpdate_INDEX, Tokenizer: []string{"exact"}}
 	require.False(t, needReindexing(s1, s2))
 
-	s1 = typesp.Schema{ValueType: uint32(types.StringID), Directive: typesp.Schema_INDEX, Tokenizer: []string{"term"}}
-	s2 = typesp.Schema{ValueType: uint32(types.StringID), Directive: typesp.Schema_INDEX}
+	s1 = protos.SchemaUpdate{ValueType: uint32(types.StringID), Directive: protos.SchemaUpdate_INDEX, Tokenizer: []string{"term"}}
+	s2 = protos.SchemaUpdate{ValueType: uint32(types.StringID), Directive: protos.SchemaUpdate_INDEX}
 	require.True(t, needReindexing(s1, s2))
 
-	s1 = typesp.Schema{ValueType: uint32(types.StringID), Directive: typesp.Schema_INDEX, Tokenizer: []string{"exact"}}
-	s2 = typesp.Schema{ValueType: uint32(types.FloatID), Directive: typesp.Schema_INDEX, Tokenizer: []string{"exact"}}
+	s1 = protos.SchemaUpdate{ValueType: uint32(types.StringID), Directive: protos.SchemaUpdate_INDEX, Tokenizer: []string{"exact"}}
+	s2 = protos.SchemaUpdate{ValueType: uint32(types.FloatID), Directive: protos.SchemaUpdate_INDEX, Tokenizer: []string{"exact"}}
 	require.True(t, needReindexing(s1, s2))
 
-	s1 = typesp.Schema{ValueType: uint32(types.StringID), Directive: typesp.Schema_INDEX, Tokenizer: []string{"exact"}}
-	s2 = typesp.Schema{ValueType: uint32(types.FloatID), Directive: typesp.Schema_NONE}
+	s1 = protos.SchemaUpdate{ValueType: uint32(types.StringID), Directive: protos.SchemaUpdate_INDEX, Tokenizer: []string{"exact"}}
+	s2 = protos.SchemaUpdate{ValueType: uint32(types.FloatID), Directive: protos.SchemaUpdate_NONE}
 	require.True(t, needReindexing(s1, s2))
 }

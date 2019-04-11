@@ -1,3 +1,20 @@
+/*
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package worker
 
 import (
@@ -13,18 +30,19 @@ import (
 	"github.com/coreos/etcd/raft/raftpb"
 	"golang.org/x/net/context"
 
-	"github.com/dgraph-io/dgraph/posting"
-	"github.com/dgraph-io/dgraph/protos/taskp"
-	"github.com/dgraph-io/dgraph/protos/workerp"
-	"github.com/dgraph-io/dgraph/raftwal"
-	"github.com/dgraph-io/dgraph/schema"
-	"github.com/dgraph-io/dgraph/types"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/adibiarsotp/dgraph/posting"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/raftwal"
+	"github.com/adibiarsotp/dgraph/schema"
+	"github.com/adibiarsotp/dgraph/types"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 const (
-	proposalMutation = 0
-	proposalReindex  = 1
+	proposalMutation   = 0
+	proposalReindex    = 1
+	proposalMembership = 2
+	ErrorNodeIDExists  = "Error Node ID already exists in the cluster"
 )
 
 // peerPool stores the peers per node and the addresses corresponding to them.
@@ -51,12 +69,14 @@ type proposals struct {
 	ids map[uint32]chan error
 }
 
-func (p *proposals) Store(pid uint32, ch chan error) {
+func (p *proposals) Store(pid uint32, ch chan error) bool {
 	p.Lock()
 	defer p.Unlock()
-	_, has := p.ids[pid]
-	x.AssertTruef(!has, "Same proposal is being stored again.")
+	if _, has := p.ids[pid]; has {
+		return false
+	}
 	p.ids[pid] = ch
+	return true
 }
 
 func (p *proposals) Done(pid uint32, err error) {
@@ -71,6 +91,13 @@ func (p *proposals) Done(pid uint32, err error) {
 		return
 	}
 	ch <- err
+}
+
+func (p *proposals) Has(pid uint32) bool {
+	p.RLock()
+	defer p.RUnlock()
+	_, has := p.ids[pid]
+	return has
 }
 
 type sendmsg struct {
@@ -96,7 +123,7 @@ type node struct {
 	messages    chan sendmsg
 	peers       peerPool
 	props       proposals
-	raftContext *taskp.RaftContext
+	raftContext *protos.RaftContext
 	store       *raft.MemoryStorage
 	wal         *raftwal.Wal
 
@@ -148,7 +175,7 @@ func newNode(gid uint32, id uint64, myAddr string) *node {
 	}
 
 	store := raft.NewMemoryStorage()
-	rc := &taskp.RaftContext{
+	rc := &protos.RaftContext{
 		Addr:  myAddr,
 		Group: gid,
 		Id:    id,
@@ -199,7 +226,7 @@ func (n *node) Connect(pid uint64, addr string) {
 func (n *node) AddToCluster(ctx context.Context, pid uint64) error {
 	addr := n.peers.Get(pid)
 	x.AssertTruef(len(addr) > 0, "Unable to find conn pool for peer: %d", pid)
-	rc := &taskp.RaftContext{
+	rc := &protos.RaftContext{
 		Addr:  addr,
 		Group: n.raftContext.Group,
 		Id:    pid,
@@ -241,7 +268,7 @@ var slicePool = sync.Pool{
 	},
 }
 
-func (n *node) ProposeAndWait(ctx context.Context, proposal *taskp.Proposal) error {
+func (n *node) ProposeAndWait(ctx context.Context, proposal *protos.Proposal) error {
 	if n.Raft() == nil {
 		return x.Errorf("RAFT isn't initialized yet")
 	}
@@ -264,7 +291,14 @@ func (n *node) ProposeAndWait(ctx context.Context, proposal *taskp.Proposal) err
 		}
 	}
 
-	proposal.Id = rand.Uint32()
+	che := make(chan error, 1)
+	for {
+		id := rand.Uint32()
+		if n.props.Store(id, che) {
+			proposal.Id = id
+			break
+		}
+	}
 
 	slice := slicePool.Get().([]byte)
 	if len(slice) < proposal.Size() {
@@ -279,15 +313,16 @@ func (n *node) ProposeAndWait(ctx context.Context, proposal *taskp.Proposal) err
 	proposalData := make([]byte, upto+1)
 	// Examining first byte of proposalData will quickly tell us what kind of
 	// proposal this is.
-	if proposal.RebuildIndex == nil {
-		proposalData[0] = proposalMutation
-	} else {
+	if proposal.RebuildIndex != nil {
 		proposalData[0] = proposalReindex
+	} else if proposal.Mutations != nil {
+		proposalData[0] = proposalMutation
+	} else if proposal.Membership != nil {
+		proposalData[0] = proposalMembership
+	} else {
+		x.Fatalf("Unknown proposal")
 	}
 	copy(proposalData[1:], slice)
-
-	che := make(chan error, 1)
-	n.props.Store(proposal.Id, che)
 
 	if err = n.Raft().Propose(ctx, proposalData); err != nil {
 		return x.Wrapf(err, "While proposing")
@@ -296,8 +331,12 @@ func (n *node) ProposeAndWait(ctx context.Context, proposal *taskp.Proposal) err
 	// Wait for the proposal to be committed.
 	if proposal.Mutations != nil {
 		x.Trace(ctx, "Waiting for the proposal: mutations.")
-	} else {
+	} else if proposal.Membership != nil {
 		x.Trace(ctx, "Waiting for the proposal: membership update.")
+	} else if proposal.RebuildIndex != nil {
+		x.Trace(ctx, "Waiting for the proposal: RebuildIndex")
+	} else {
+		x.Fatalf("Unknown proposal")
 	}
 
 	select {
@@ -370,8 +409,8 @@ func (n *node) doSendMessage(to uint64, data []byte) {
 	x.Check(err)
 	defer pool.Put(conn)
 
-	c := workerp.NewWorkerClient(conn)
-	p := &workerp.Payload{Data: data}
+	c := protos.NewWorkerClient(conn)
+	p := &protos.Payload{Data: data}
 
 	ch := make(chan error, 1)
 	go func() {
@@ -389,7 +428,7 @@ func (n *node) doSendMessage(to uint64, data []byte) {
 	}
 }
 
-func (n *node) processMutation(e raftpb.Entry, m *taskp.Mutations) error {
+func (n *node) processMutation(e raftpb.Entry, m *protos.Mutations) error {
 	// TODO: Need to pass node and entry index.
 	rv := x.RaftValue{Group: n.gid, Index: e.Index}
 	ctx := context.WithValue(n.ctx, "raft", rv)
@@ -400,7 +439,7 @@ func (n *node) processMutation(e raftpb.Entry, m *taskp.Mutations) error {
 	return nil
 }
 
-func (n *node) processSchemaMutations(e raftpb.Entry, m *taskp.Mutations) error {
+func (n *node) processSchemaMutations(e raftpb.Entry, m *protos.Mutations) error {
 	// TODO: Need to pass node and entry index.
 	rv := x.RaftValue{Group: n.gid, Index: e.Index}
 	ctx := context.WithValue(n.ctx, "raft", rv)
@@ -411,7 +450,7 @@ func (n *node) processSchemaMutations(e raftpb.Entry, m *taskp.Mutations) error 
 	return nil
 }
 
-func (n *node) processMembership(e raftpb.Entry, mm *taskp.Membership) error {
+func (n *node) processMembership(e raftpb.Entry, mm *protos.Membership) error {
 	x.AssertTrue(n.gid == 0)
 
 	x.Printf("group: %v Addr: %q leader: %v dead: %v\n",
@@ -431,7 +470,7 @@ func (n *node) process(e raftpb.Entry, pending chan struct{}) {
 	}
 
 	pending <- struct{}{} // This will block until we can write to it.
-	var proposal taskp.Proposal
+	var proposal protos.Proposal
 	x.AssertTrue(len(e.Data) > 0)
 	x.Checkf(proposal.Unmarshal(e.Data[1:]), "Unable to parse entry: %+v", e)
 
@@ -464,7 +503,7 @@ func (n *node) processApplyCh() {
 			cc.Unmarshal(e.Data)
 
 			if len(cc.Context) > 0 {
-				var rc taskp.RaftContext
+				var rc protos.RaftContext
 				x.Check(rc.Unmarshal(cc.Context))
 				n.Connect(rc.Id, rc.Addr)
 			}
@@ -479,7 +518,7 @@ func (n *node) processApplyCh() {
 		// We derive the schema here if it's not present
 		// Since raft committed logs are serialized, we can derive
 		// schema here without any locking
-		var proposal taskp.Proposal
+		var proposal protos.Proposal
 		x.Checkf(proposal.Unmarshal(e.Data[1:]), "Unable to parse entry: %+v", e)
 
 		if e.Type == raftpb.EntryNormal && proposal.Mutations != nil {
@@ -493,6 +532,7 @@ func (n *node) processApplyCh() {
 					n.applied.Ch <- mark
 					posting.SyncMarkFor(n.gid).Ch <- mark
 					n.props.Done(proposal.Id, err)
+					continue
 				}
 			}
 
@@ -541,7 +581,7 @@ func (n *node) saveToStorage(s raftpb.Snapshot, h raftpb.HardState,
 	n.store.Append(es)
 }
 
-func (n *node) retrieveSnapshot(rc taskp.RaftContext) {
+func (n *node) retrieveSnapshot(rc protos.RaftContext) {
 	addr := n.peers.Get(rc.Id)
 	x.AssertTruef(addr != "", "Should have the address for %d", rc.Id)
 	pool := pools().get(addr)
@@ -562,11 +602,12 @@ func (n *node) retrieveSnapshot(rc taskp.RaftContext) {
 	x.Check2(populateShard(n.ctx, pool, n.gid))
 	// Populate shard stores the streamed data directly into db, so we need to refresh
 	// schema for current group id
-	x.Checkf(schema.Refresh(n.gid), "Error while initilizating schema")
+	x.Checkf(schema.LoadFromDb(n.gid), "Error while initilizating schema")
 }
 
 func (n *node) Run() {
 	firstRun := true
+	var leader bool
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	rcBytes, err := n.raftContext.Marshal()
@@ -577,6 +618,17 @@ func (n *node) Run() {
 			n.Raft().Tick()
 
 		case rd := <-n.Raft().Ready():
+			if rd.SoftState != nil {
+				if rd.RaftState == raft.StateFollower && leader {
+					// stepped down as leader do a sync membership immediately
+					groups().syncMemberships()
+				} else if rd.RaftState == raft.StateLeader && !leader {
+					// TODO:wait for apply watermark ??
+					leaseMgr().resetLease(n.gid)
+					groups().syncMemberships()
+				}
+				leader = rd.RaftState == raft.StateLeader
+			}
 			x.Check(n.wal.StoreSnapshot(n.gid, rd.Snapshot))
 			x.Check(n.wal.Store(n.gid, rd.HardState, rd.Entries))
 
@@ -592,7 +644,7 @@ func (n *node) Run() {
 				// We don't send snapshots to other nodes. But, if we get one, that means
 				// either the leader is trying to bring us up to state; or this is the
 				// snapshot that I created. Only the former case should be handled.
-				var rc taskp.RaftContext
+				var rc protos.RaftContext
 				x.Check(rc.Unmarshal(rd.Snapshot.Data))
 				if rc.Id != n.id {
 					fmt.Printf("-------> SNAPSHOT [%d] from %d\n", n.gid, rc.Id)
@@ -608,6 +660,11 @@ func (n *node) Run() {
 
 			for _, entry := range rd.CommittedEntries {
 				// Need applied watermarks for schema mutation also for read linearazibility
+				// Applied watermarks needs to be emitted as soon as possible sequentially.
+				// If we emit Mark{4, false} and Mark{4, true} before emitting Mark{3, false}
+				// then doneUntil would be set as 4 as soon as Mark{4,true} is done and before
+				// Mark{3, false} is emitted. So it's safer to emit watermarks as soon as
+				// possible sequentially
 				status := x.Mark{Index: entry.Index, Done: false}
 				n.applied.Ch <- status
 				posting.SyncMarkFor(n.gid).Ch <- status
@@ -623,7 +680,23 @@ func (n *node) Run() {
 			}
 
 		case <-n.stop:
-			close(n.done)
+			if peerId, has := groups().Peer(n.gid, *raftId); has && n.AmLeader() {
+				n.Raft().TransferLeadership(n.ctx, *raftId, peerId)
+				go func() {
+					select {
+					case <-n.ctx.Done(): // time out
+						x.Trace(n.ctx, "context timed out while transfering leadership")
+					case <-time.After(1 * time.Second):
+						x.Trace(n.ctx, "Timed out transfering leadership")
+					}
+					n.Raft().Stop()
+					close(n.done)
+				}()
+			} else {
+				n.Raft().Stop()
+				close(n.done)
+			}
+		case <-n.done:
 			return
 		}
 	}
@@ -651,49 +724,46 @@ func (n *node) snapshotPeriodically() {
 		return
 	}
 
-	var prev string
-	// TODO: What should be ideal value for snapshotting ? If a node is lost due to network
-	// partition or some other issue for more than log compaction tick interval, then that
-	// node needs to fetch snapshot since logs would be truncated
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
-			water := posting.SyncMarkFor(n.gid)
-			le := water.DoneUntil()
-
-			existing, err := n.store.Snapshot()
-			x.Checkf(err, "Unable to get existing snapshot")
-
-			si := existing.Metadata.Index
-			if le <= si {
-				msg := fmt.Sprintf("Current watermark %d <= previous snapshot %d. Skipping.", le, si)
-				if msg != prev {
-					prev = msg
-					fmt.Println(msg)
-				}
-				continue
-			}
-			msg := fmt.Sprintf("Taking snapshot for group: %d at watermark: %d\n", n.gid, le)
-			if msg != prev {
-				prev = msg
-				fmt.Println(msg)
-			}
-
-			rc, err := n.raftContext.Marshal()
-			x.Check(err)
-
-			s, err := n.store.CreateSnapshot(le, n.ConfState(), rc)
-			x.Checkf(err, "While creating snapshot")
-			x.Checkf(n.store.Compact(le), "While compacting snapshot")
-			x.Check(n.wal.StoreSnapshot(n.gid, s))
+			n.snapshot(*maxPendingCount)
 
 		case <-n.done:
 			return
 		}
 	}
+}
+
+func (n *node) snapshot(skip uint64) {
+	if n.gid == 0 {
+		// Group zero is dedicated for membership information, whose state we don't persist.
+		// So, taking snapshots would end up deleting the RAFT entries that we need to
+		// regenerate the state on a crash. Therefore, don't take snapshots.
+		return
+	}
+	water := posting.SyncMarkFor(n.gid)
+	le := water.DoneUntil()
+
+	existing, err := n.store.Snapshot()
+	x.Checkf(err, "Unable to get existing snapshot")
+
+	si := existing.Metadata.Index
+	if le <= si+skip {
+		return
+	}
+	snapshotIdx := le - skip
+	x.Trace(n.ctx, "Taking snapshot for group: %d at watermark: %d\n", n.gid, snapshotIdx)
+	rc, err := n.raftContext.Marshal()
+	x.Check(err)
+
+	s, err := n.store.CreateSnapshot(snapshotIdx, n.ConfState(), rc)
+	x.Checkf(err, "While creating snapshot")
+	x.Checkf(n.store.Compact(snapshotIdx), "While compacting snapshot")
+	x.Check(n.wal.StoreSnapshot(n.gid, s))
 }
 
 func (n *node) joinPeers() {
@@ -715,7 +785,7 @@ func (n *node) joinPeers() {
 	x.Check(err)
 	defer pool.Put(conn)
 
-	c := workerp.NewWorkerClient(conn)
+	c := protos.NewWorkerClient(conn)
 	x.Printf("Calling JoinCluster")
 	_, err = c.JoinCluster(n.ctx, n.raftContext)
 	x.Checkf(err, "Error while joining cluster")
@@ -739,6 +809,8 @@ func (n *node) initFromWal(wal *raftwal.Wal) (restart bool, rerr error) {
 		}
 		term = sp.Metadata.Term
 		idx = sp.Metadata.Index
+		n.applied.SetDoneUntil(idx)
+		posting.SyncMarkFor(n.gid).SetDoneUntil(idx)
 	}
 
 	var hd raftpb.HardState
@@ -806,7 +878,7 @@ func (n *node) AmLeader() bool {
 }
 
 func (w *grpcWorker) applyMessage(ctx context.Context, msg raftpb.Message) error {
-	var rc taskp.RaftContext
+	var rc protos.RaftContext
 	x.Check(rc.Unmarshal(msg.Context))
 	node := groups().Node(rc.Group)
 	// TODO: Handle the case where node isn't present for this group.
@@ -823,9 +895,9 @@ func (w *grpcWorker) applyMessage(ctx context.Context, msg raftpb.Message) error
 	}
 }
 
-func (w *grpcWorker) RaftMessage(ctx context.Context, query *workerp.Payload) (*workerp.Payload, error) {
+func (w *grpcWorker) RaftMessage(ctx context.Context, query *protos.Payload) (*protos.Payload, error) {
 	if ctx.Err() != nil {
-		return &workerp.Payload{}, ctx.Err()
+		return &protos.Payload{}, ctx.Err()
 	}
 
 	for idx := 0; idx < len(query.Data); {
@@ -836,7 +908,7 @@ func (w *grpcWorker) RaftMessage(ctx context.Context, query *workerp.Payload) (*
 		idx += 4
 		msg := raftpb.Message{}
 		if idx+sz-1 > len(query.Data) {
-			return &workerp.Payload{}, x.Errorf(
+			return &protos.Payload{}, x.Errorf(
 				"Invalid query. Size specified: %v. Size of array: %v\n", sz, len(query.Data))
 		}
 		if err := msg.Unmarshal(query.Data[idx : idx+sz]); err != nil {
@@ -846,22 +918,27 @@ func (w *grpcWorker) RaftMessage(ctx context.Context, query *workerp.Payload) (*
 			fmt.Printf("RECEIVED: %v %v-->%v\n", msg.Type, msg.From, msg.To)
 		}
 		if err := w.applyMessage(ctx, msg); err != nil {
-			return &workerp.Payload{}, err
+			return &protos.Payload{}, err
 		}
 		idx += sz
 	}
 	// fmt.Printf("Got %d messages\n", count)
-	return &workerp.Payload{}, nil
+	return &protos.Payload{}, nil
 }
 
-func (w *grpcWorker) JoinCluster(ctx context.Context, rc *taskp.RaftContext) (*workerp.Payload, error) {
+func (w *grpcWorker) JoinCluster(ctx context.Context, rc *protos.RaftContext) (*protos.Payload, error) {
 	if ctx.Err() != nil {
-		return &workerp.Payload{}, ctx.Err()
+		return &protos.Payload{}, ctx.Err()
+	}
+
+	// Best effor reject
+	if _, found := groups().Server(rc.Id, rc.Group); found || rc.Id == *raftId {
+		return &protos.Payload{}, x.Errorf(ErrorNodeIDExists)
 	}
 
 	node := groups().Node(rc.Group)
 	if node == nil {
-		return &workerp.Payload{}, nil
+		return &protos.Payload{}, nil
 	}
 	node.Connect(rc.Id, rc.Addr)
 
@@ -870,8 +947,8 @@ func (w *grpcWorker) JoinCluster(ctx context.Context, rc *taskp.RaftContext) (*w
 
 	select {
 	case <-ctx.Done():
-		return &workerp.Payload{}, ctx.Err()
+		return &protos.Payload{}, ctx.Err()
 	case err := <-c:
-		return &workerp.Payload{}, err
+		return &protos.Payload{}, err
 	}
 }

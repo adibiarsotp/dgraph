@@ -1,17 +1,18 @@
 /*
- * Copyright 2016 Dgraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package tok
@@ -21,12 +22,12 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/dgraph-io/dgraph/types"
+	"github.com/adibiarsotp/dgraph/types"
 	"github.com/stretchr/testify/require"
 )
 
 type encL struct {
-	ints   []int32
+	ints   []int64
 	tokens []string
 }
 
@@ -42,15 +43,15 @@ func (o byEnc) Swap(i, j int) {
 }
 
 func TestIntEncoding(t *testing.T) {
-	a := int32(1<<24 + 10)
-	b := int32(-1<<24 - 1)
-	c := int32(math.MaxInt32)
-	d := int32(math.MinInt32)
+	a := int64(1<<24 + 10)
+	b := int64(-1<<24 - 1)
+	c := int64(math.MaxInt64)
+	d := int64(math.MinInt64)
 	enc := encL{}
-	arr := []int32{a, b, c, d, 1, 2, 3, 4, -1, -2, -3, 0, 234, 10000, 123, -1543}
+	arr := []int64{a, b, c, d, 1, 2, 3, 4, -1, -2, -3, 0, 234, 10000, 123, -1543}
 	enc.ints = arr
 	for _, it := range arr {
-		encoded := encodeInt(int32(it))
+		encoded := encodeInt(int64(it))
 		enc.tokens = append(enc.tokens, encoded)
 	}
 	sort.Sort(byEnc{enc})
@@ -76,7 +77,7 @@ func TestFullTextTokenizer(t *testing.T) {
 }
 
 func TestFullTextTokenizerLang(t *testing.T) {
-	tokenizer, has := GetTokenizer(ftsTokenizerName("de"))
+	tokenizer, has := GetTokenizer(FtsTokenizerName("de"))
 	require.True(t, has)
 	require.NotNil(t, tokenizer)
 	val := types.ValueForType(types.StringID)
@@ -97,8 +98,33 @@ func TestTermTokenizer(t *testing.T) {
 	val.Value = "Tokenizer works!"
 
 	tokens, err := tokenizer.Tokens(val)
-	require.Nil(t, err)
+	require.NoError(t, err)
 	require.Equal(t, 2, len(tokens))
 	id := tokenizer.Identifier()
 	require.Equal(t, []string{encodeToken("tokenizer", id), encodeToken("works", id)}, tokens)
+}
+
+func TestTrigramTokenizer(t *testing.T) {
+	tokenizer, has := GetTokenizer("trigram")
+	require.True(t, has)
+	require.NotNil(t, tokenizer)
+	val := types.ValueForType(types.StringID)
+	val.Value = "Dgraph rocks!"
+	tokens, err := tokenizer.Tokens(val)
+	require.NoError(t, err)
+	require.Equal(t, 11, len(tokens))
+	id := tokenizer.Identifier()
+	require.Equal(t, []string{
+		encodeToken("Dgr", id),
+		encodeToken("gra", id),
+		encodeToken("rap", id),
+		encodeToken("aph", id),
+		encodeToken("ph ", id),
+		encodeToken("h r", id),
+		encodeToken(" ro", id),
+		encodeToken("roc", id),
+		encodeToken("ock", id),
+		encodeToken("cks", id),
+		encodeToken("ks!", id),
+	}, tokens)
 }

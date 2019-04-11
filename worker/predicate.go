@@ -1,17 +1,18 @@
 /*
-* Copyright 2016 DGraph Labs, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*         http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package worker
@@ -22,11 +23,11 @@ import (
 	"io"
 	"sort"
 
-	"github.com/dgraph-io/dgraph/group"
-	"github.com/dgraph-io/dgraph/protos/taskp"
-	"github.com/dgraph-io/dgraph/protos/typesp"
-	"github.com/dgraph-io/dgraph/protos/workerp"
-	"github.com/dgraph-io/dgraph/x"
+	"github.com/dgraph-io/badger/badger"
+
+	"github.com/adibiarsotp/dgraph/group"
+	"github.com/adibiarsotp/dgraph/protos"
+	"github.com/adibiarsotp/dgraph/x"
 )
 
 const (
@@ -35,75 +36,71 @@ const (
 )
 
 // writeBatch performs a batch write of key value pairs to RocksDB.
-func writeBatch(ctx context.Context, kv chan *taskp.KV, che chan error) {
-	wb := pstore.NewWriteBatch()
-	defer wb.Destroy()
-
+func writeBatch(ctx context.Context, kv chan *protos.KV, che chan error) {
+	wb := make([]*badger.Entry, 0, 100)
 	batchSize := 0
 	batchWriteNum := 1
 	for i := range kv {
-		wb.Put(i.Key, i.Val)
+		wb = badger.EntriesSet(wb, i.Key, i.Val)
 		batchSize += len(i.Key) + len(i.Val)
 		// We write in batches of size 32MB.
 		if batchSize >= 32*MB {
 			x.Trace(ctx, "SNAPSHOT: Doing batch write num: %d", batchWriteNum)
-			if err := pstore.WriteBatch(wb); err != nil {
-				che <- err
-				return
-			}
+			pstore.BatchSet(wb)
 
 			batchWriteNum++
 			// Resetting batch size after a batch write.
 			batchSize = 0
 			// Since we are writing data in batches, we need to clear up items enqueued
 			// for batch write after every successful write.
-			wb.Clear()
+			wb = wb[:0]
 		}
 	}
 	// After channel is closed the above loop would exit, we write the data in
 	// write batch here.
 	if batchSize > 0 {
 		x.Trace(ctx, "Doing batch write %d.", batchWriteNum)
-		che <- pstore.WriteBatch(wb) // Returning, wb will be destroyed. No need to clear.
-		return
+		pstore.BatchSet(wb)
 	}
 	che <- nil
 }
 
-func streamKeys(stream workerp.Worker_PredicateAndSchemaDataClient, groupId uint32) error {
-	it := pstore.NewIterator()
+func streamKeys(stream protos.Worker_PredicateAndSchemaDataClient, groupId uint32) error {
+	it := pstore.NewIterator(badger.DefaultIteratorOptions)
 	defer it.Close()
 
-	g := &taskp.GroupKeys{
+	g := &protos.GroupKeys{
 		GroupId: groupId,
 	}
 
-	for it.SeekToFirst(); it.Valid(); it.Next() {
-		k, v := it.Key(), it.Value()
-		pk := x.Parse(k.Data())
-
+	// Do NOT go to next by default. Be careful when you "continue" in loop.
+	for it.Rewind(); it.Valid(); {
+		iterItem := it.Item()
+		k := iterItem.Key()
+		pk := x.Parse(k)
 		if pk == nil {
+			it.Next()
 			continue
 		}
 		// No need to send KC for schema keys, since we won't save anything
 		// by sending checksum of schema key
 		if pk.IsSchema() {
 			it.Seek(pk.SkipSchema())
-			it.Prev()
+			// Do not go next.
 			continue
 		}
 		if group.BelongsTo(pk.Attr) != g.GroupId {
 			it.Seek(pk.SkipPredicate())
-			it.Prev() // To tackle it.Next() called by default.
+			// Do not go next.
 			continue
 		}
 
-		var pl typesp.PostingList
-		x.Check(pl.Unmarshal(v.Data()))
+		var pl protos.PostingList
+		x.Check(pl.Unmarshal(iterItem.Value()))
 
-		kdup := make([]byte, len(k.Data()))
-		copy(kdup, k.Data())
-		key := &taskp.KC{
+		kdup := make([]byte, len(k))
+		copy(kdup, k)
+		key := &protos.KC{
 			Key:      kdup,
 			Checksum: pl.Checksum,
 		}
@@ -114,6 +111,7 @@ func streamKeys(stream workerp.Worker_PredicateAndSchemaDataClient, groupId uint
 			}
 			g.Keys = g.Keys[:0]
 		}
+		it.Next()
 	}
 	if err := stream.Send(g); err != nil {
 		return x.Wrapf(err, "While sending group keys to server.")
@@ -129,7 +127,7 @@ func populateShard(ctx context.Context, pl *pool, group uint32) (int, error) {
 		return 0, err
 	}
 	defer pl.Put(conn)
-	c := workerp.NewWorkerClient(conn)
+	c := protos.NewWorkerClient(conn)
 
 	stream, err := c.PredicateAndSchemaData(context.Background())
 	if err != nil {
@@ -143,7 +141,7 @@ func populateShard(ctx context.Context, pl *pool, group uint32) (int, error) {
 		return 0, x.Wrapf(err, "While streaming keys group")
 	}
 
-	kvs := make(chan *taskp.KV, 1000)
+	kvs := make(chan *protos.KV, 1000)
 	che := make(chan error)
 	go writeBatch(ctx, kvs, che)
 
@@ -187,8 +185,8 @@ func populateShard(ctx context.Context, pl *pool, group uint32) (int, error) {
 
 // PredicateAndSchemaData can be used to return data corresponding to a predicate over
 // a stream.
-func (w *grpcWorker) PredicateAndSchemaData(stream workerp.Worker_PredicateAndSchemaDataServer) error {
-	gkeys := &taskp.GroupKeys{}
+func (w *grpcWorker) PredicateAndSchemaData(stream protos.Worker_PredicateAndSchemaDataServer) error {
+	gkeys := &protos.GroupKeys{}
 
 	// Receive all keys from client first.
 	for {
@@ -220,33 +218,38 @@ func (w *grpcWorker) PredicateAndSchemaData(stream workerp.Worker_PredicateAndSc
 	// TODO(pawan) - Shift to CheckPoints once we figure out how to add them to the
 	// RocksDB library we are using.
 	// http://rocksdb.org/blog/2609/use-checkpoints-for-efficient-snapshots/
-	it := pstore.NewIterator()
+	it := pstore.NewIterator(badger.DefaultIteratorOptions)
 	defer it.Close()
 
 	var count int
-	for it.SeekToFirst(); it.Valid(); it.Next() {
-		k, v := it.Key(), it.Value()
-		pk := x.Parse(k.Data())
+	// Do NOT it.Next() by default. Be careful when you "continue" in loop!
+	for it.Rewind(); it.Valid(); {
+		iterItem := it.Item()
+		k := iterItem.Key()
+		pk := x.Parse(k)
 
 		if pk == nil {
+			it.Next()
 			continue
 		}
 		if group.BelongsTo(pk.Attr) != gkeys.GroupId && !pk.IsSchema() {
 			it.Seek(pk.SkipPredicate())
-			it.Prev() // To tackle it.Next() called by default.
+			// Do not go next.
 			continue
 		} else if group.BelongsTo(pk.Attr) != gkeys.GroupId {
+			it.Next()
 			continue
 		}
 
 		// No checksum check for schema keys
+		v := iterItem.Value()
 		if !pk.IsSchema() {
-			var pl typesp.PostingList
-			x.Check(pl.Unmarshal(v.Data()))
+			var pl protos.PostingList
+			x.Check(pl.Unmarshal(v))
 
 			idx := sort.Search(len(gkeys.Keys), func(i int) bool {
 				t := gkeys.Keys[i]
-				return bytes.Compare(k.Data(), t.Key) <= 0
+				return bytes.Compare(k, t.Key) <= 0
 			})
 
 			if idx < len(gkeys.Keys) {
@@ -254,8 +257,9 @@ func (w *grpcWorker) PredicateAndSchemaData(stream workerp.Worker_PredicateAndSc
 				t := gkeys.Keys[idx]
 				// Different keys would have the same prefix. So, check Checksum first,
 				// it would be cheaper when there's no match.
-				if bytes.Equal(pl.Checksum, t.Checksum) && bytes.Equal(k.Data(), t.Key) {
+				if bytes.Equal(pl.Checksum, t.Checksum) && bytes.Equal(k, t.Key) {
 					// No need to send this.
+					it.Next()
 					continue
 				}
 			}
@@ -263,20 +267,17 @@ func (w *grpcWorker) PredicateAndSchemaData(stream workerp.Worker_PredicateAndSc
 
 		// We just need to stream this kv. So, we can directly use the key
 		// and val without any copying.
-		kv := &taskp.KV{
-			Key: k.Data(),
-			Val: v.Data(),
+		kv := &protos.KV{
+			Key: k,
+			Val: v,
 		}
 
 		count++
 		if err := stream.Send(kv); err != nil {
 			return err
 		}
+		it.Next()
 	} // end of iterator
 	x.Trace(stream.Context(), "Sent %d keys to client. Done.\n", count)
-
-	if err := it.Err(); err != nil {
-		return err
-	}
 	return nil
 }

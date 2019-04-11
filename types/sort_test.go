@@ -1,17 +1,18 @@
 /*
- * Copyright 2016 Dgraph Labs, Inc.
+ * Copyright (C) 2017 Dgraph Labs, Inc. and Contributors
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
  *
- * 		http://www.apache.org/licenses/LICENSE-2.0
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package types
@@ -19,7 +20,7 @@ package types
 import (
 	"testing"
 
-	"github.com/dgraph-io/dgraph/protos/taskp"
+	"github.com/adibiarsotp/dgraph/protos"
 	"github.com/stretchr/testify/require"
 )
 
@@ -44,36 +45,36 @@ func getInput(t *testing.T, tid TypeID, in []string) []Val {
 	return list
 }
 
-func getUIDList(n int) *taskp.List {
+func getUIDList(n int) *protos.List {
 	data := make([]uint64, 0, n)
 	for i := 1; i <= n; i++ {
 		data = append(data, uint64(i*100))
 	}
-	return &taskp.List{data}
+	return &protos.List{data}
 }
 
 func TestSortStrings(t *testing.T) {
 	list := getInput(t, StringID, []string{"bb", "aaa", "aa", "bab"})
 	ul := getUIDList(4)
-	require.NoError(t, Sort(StringID, list, ul, false))
+	require.NoError(t, Sort(list, ul, false))
 	require.EqualValues(t, []uint64{300, 200, 400, 100}, ul.Uids)
 	require.EqualValues(t, []string{"aa", "aaa", "bab", "bb"},
 		toString(t, list, StringID))
 }
 
 func TestSortInts(t *testing.T) {
-	list := getInput(t, Int32ID, []string{"22", "111", "11", "212"})
+	list := getInput(t, IntID, []string{"22", "111", "11", "212"})
 	ul := getUIDList(4)
-	require.NoError(t, Sort(Int32ID, list, ul, false))
+	require.NoError(t, Sort(list, ul, false))
 	require.EqualValues(t, []uint64{300, 100, 200, 400}, ul.Uids)
 	require.EqualValues(t, []string{"11", "22", "111", "212"},
-		toString(t, list, Int32ID))
+		toString(t, list, IntID))
 }
 
 func TestSortFloats(t *testing.T) {
 	list := getInput(t, FloatID, []string{"22.2", "11.2", "11.5", "2.12"})
 	ul := getUIDList(4)
-	require.NoError(t, Sort(FloatID, list, ul, false))
+	require.NoError(t, Sort(list, ul, false))
 	require.EqualValues(t, []uint64{400, 200, 300, 100}, ul.Uids)
 	require.EqualValues(t,
 		[]string{"2.12E+00", "1.12E+01", "1.15E+01", "2.22E+01"},
@@ -83,7 +84,7 @@ func TestSortFloats(t *testing.T) {
 func TestSortFloatsDesc(t *testing.T) {
 	list := getInput(t, FloatID, []string{"22.2", "11.2", "11.5", "2.12"})
 	ul := getUIDList(4)
-	require.NoError(t, Sort(FloatID, list, ul, true))
+	require.NoError(t, Sort(list, ul, true))
 	require.EqualValues(t, []uint64{100, 300, 200, 400}, ul.Uids)
 	require.EqualValues(t,
 		[]string{"2.22E+01", "1.15E+01", "1.12E+01", "2.12E+00"},
@@ -94,7 +95,7 @@ func TestSortDates(t *testing.T) {
 	in := []string{"2022-01-01", "2022-02-03", "2021-01-05", "2021-01-07"}
 	list := getInput(t, DateID, in)
 	ul := getUIDList(4)
-	require.NoError(t, Sort(DateID, list, ul, false))
+	require.NoError(t, Sort(list, ul, false))
 	require.EqualValues(t, []uint64{300, 400, 100, 200}, ul.Uids)
 	require.EqualValues(t,
 		[]string{"2021-01-05", "2021-01-07", "2022-01-01", "2022-02-03"},
@@ -110,7 +111,7 @@ func TestSortDateTimes(t *testing.T) {
 	}
 	list := getInput(t, DateTimeID, in)
 	ul := getUIDList(4)
-	require.NoError(t, Sort(DateTimeID, list, ul, false))
+	require.NoError(t, Sort(list, ul, false))
 	require.EqualValues(t, []uint64{400, 200, 300, 100}, ul.Uids)
 	require.EqualValues(t,
 		[]string{"2006-01-02T15:04:01Z", "2006-01-02T15:04:05Z",
